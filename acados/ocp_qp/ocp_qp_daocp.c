@@ -157,14 +157,13 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
         size += ne_t*sizeof(f64); // d[t]
         size += (ng[t]-nge[t])*(nu[t]+nx[t])*sizeof(f64); // Cu[t], Cx[t]
         size += (t<N ? ne_t : 0)*nu[t]*sizeof(f64); // Du[t]
-        size += ne_t*(t>0 ? 1 : 0)*nx[t]*sizeof(f64); // Dx[t]
+        size += ne_t*nx[t]*sizeof(f64); // Dx[t]
 
         neq += ne_t;
-        nin += nb[t]+ng[t]-ne_t;
-        nb_tot += nb[t] - (t > 0 ? 0 : nbx[t]);
+        nin += nb[t]+ng[t]-(nge[t]+nbue[t]+nbxe[t]);
+        nb_tot += nb[t]-nbue[t]-nbxe[t];
     }
-    size -= 2*nbx[0]*sizeof(f64);
-    size -= ng[0]*nx[0]*sizeof(f64); // Subtract off Cx[0]
+    size -= (ng[0]-nge[0])*nx[0]*sizeof(f64); // Subtract off Cx[0]
     size += (2*N+1)*sizeof(f64*); // Cu[:], Cx[:]
     size += (2*N+1)*sizeof(f64*); // Du[:], Dx[:]
     size += 4*(2*N+1)*sizeof(f64*); // lbu/x[:], ubu/x[:], lbu/x_wrk[:], ubu/x_wrk[:]
@@ -203,7 +202,7 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     size += (N+1)*sizeof(u32*); // as.constraint_status[:]
     size += nin*sizeof(u32); // as.constraint_status
         
-    u32 W_stride = DAOCP_MIN(tot_nu, nin);
+    u32 W_stride = DAOCP_MIN(tot_nu, nin)+1;
     size += W_stride*sizeof(daocp_constraint); // as.xi2con
     size += 3*W_stride*sizeof(f64); // xi, p, dual_linear
     size += W_stride*sizeof(u32); // xi_sign
@@ -296,6 +295,10 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     c_ptr = assign_ptr_vec(wrk->lbu_wrk, c_ptr, nbu, nbue, 0, sizeof(f64), N);
     mem->qp.lbx[0] = 0; c_ptr = assign_ptr_vec(mem->qp.lbx+1, c_ptr, nbx+1, nbxe+1, 0, sizeof(f64), N);
     wrk->lbx_wrk[0] = 0; c_ptr = assign_ptr_vec(wrk->lbx_wrk+1, c_ptr, nbx+1, nbxe+1, 0, sizeof(f64), N);
+    c_ptr = assign_ptr_vec(mem->qp.ubu, c_ptr, nbu, nbue, 0, sizeof(f64), N);
+    c_ptr = assign_ptr_vec(wrk->ubu_wrk, c_ptr, nbu, nbue, 0, sizeof(f64), N);
+    mem->qp.ubx[0] = 0; c_ptr = assign_ptr_vec(mem->qp.ubx+1, c_ptr, nbx+1, nbxe+1, 0, sizeof(f64), N);
+    wrk->ubx_wrk[0] = 0; c_ptr = assign_ptr_vec(wrk->ubx_wrk+1, c_ptr, nbx+1, nbxe+1, 0, sizeof(f64), N);
     c_ptr = assign_ptr_vec(mem->qp.idxbu, c_ptr, nbu, nbue, 0, sizeof(u32), N);
     mem->qp.idxbx[0] = 0; c_ptr = assign_ptr_vec(mem->qp.idxbx+1, c_ptr, nbx+1, nbxe+1, 0, sizeof(u32), N);
     c_ptr = assign_ptr_vec(mem->qp.cl, c_ptr, ng, nge, 0, sizeof(f64), N+1);
@@ -380,7 +383,7 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     blasfeo_create_dvec(nx[N], wrk->ux_lqr+N, c_ptr);
     c_ptr += blasfeo_memsize_dvec(nx[N]);
     
-    u32 W_stride = DAOCP_MIN(tot_nu, nin);
+    u32 W_stride = DAOCP_MIN(tot_nu, nin)+1;
     wrk->as.xi2con = c_ptr; c_ptr += W_stride*sizeof(daocp_constraint);
     wrk->xi = c_ptr; c_ptr+=W_stride*sizeof(f64);
     wrk->p = c_ptr; c_ptr+=W_stride*sizeof(f64);
@@ -616,7 +619,7 @@ static void acados_daocp_init_workspace(daocp_workspace* wrk) {
     }
     wrk->nu_tot = acc;
     acc = 0; for (u32 i=0; i<=wrk->dims->N; ++i) acc += wrk->dims->nbx[i]+wrk->dims->nbu[i]+wrk->dims->ng[i];
-    wrk->W_stride = DAOCP_MIN(acc, wrk->nu_tot);
+    wrk->W_stride = DAOCP_MIN(acc, wrk->nu_tot)+1;
 
     wrk->singular = 0;
     wrk->as.n_active = 0;
