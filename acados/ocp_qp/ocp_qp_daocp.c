@@ -674,7 +674,7 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     wrk->dims = &qp_native->dims;
     // TODO: Handle first_run != 0
     acados_daocp_process_constraints(qp_in, dim, qp_native, wrk);
-    acados_daocp_init_workspace(wrk);
+    if (opts->first_run) acados_daocp_init_workspace(wrk);
     // Set solution pointers
     mem->sol.ux = qp_out->ux;
 
@@ -683,10 +683,25 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
 
     // TODO: Handle first_solve != 0
     acados_tic(&qp_timer);
+    // The following calls before daocp_solve are effectively
+    // part of the solver.
+    acados_tic(&solver_call_timer); 
     daocp_solve_riccati(wrk, qp_native);
     daocp_solve_lqr(wrk, qp_native);
-    acados_tic(&solver_call_timer);
-    // Solve
+    // We check whether we can use the active set information from 
+    // the previous solve.
+    if (!first_run) {
+        // Recompute cholesky of dual hessian, detecting singularity
+        u32 need_reset = daocp_compute_chol_from_scratch(wrk, qp_native);
+        // Compute dual minimizer and check dual feasibility
+        if (!need_reset) {
+            daocp_solve_dual_eqcon_qp(wrk);
+            need_reset = !daocp_is_dual_feasible(wrk->p, wrk->xi_sign, wrk->as.n_active);
+            // If the dual minimizer is feasible, we can keep the working set
+            if (!need_reset) memcpy(wrk->xi, wrk->p, wrk->as.n_active*sizeof(f64));
+        }
+        if (need_reset) daocp_reset_working_set(wrk);
+    }
     daocp_solve(&opts->daocp_opts, qp_native, wrk, &mem->sol);
     mem->time_qp_solver_call = acados_toc(&solver_call_timer);
 
