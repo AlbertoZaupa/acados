@@ -456,6 +456,15 @@ acados_size_t ocp_qp_daocp_workspace_calculate_size(void *config_, void *dims_, 
     return 0;
 }
 
+static u32 acados_daocp_contains_index(const u32 *indices, u32 offset, u32 count, u32 index)
+{
+    for (u32 i = 0; i < count; i++)
+        if (indices[offset+i] == index)
+            return 1;
+
+    return 0;
+}
+
 static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim, daocp_qp* qp_native, daocp_workspace* wrk) {
     // Dimensions
     u32 N = qp_native->dims.N = (u32) qp_in->dim->N;
@@ -474,21 +483,20 @@ static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim,
     qp_native->dims.ne[0] -= dim->nbxe[0];
 
     // Extract x0
-    for (u32 i=0; i<dim->nx[0]; ++i) qp_native->x0[i] = BLASFEO_DVECEL(qp_in->d, dim->nbu[0]+i);
+    for (u32 i=0; i<dim->nbxe[0]; ++i) {
+        u32 bound_index = qp_in->idxe[0][dim->nbue[0]+i];
+        u32 state_index = qp_in->idxb[0][bound_index] - dim->nu[0];
+        qp_native->x0[state_index] = BLASFEO_DVECEL(qp_in->d, bound_index);
+    }
 
     // u bounds
     for (u32 t=0; t<N; ++t) {
-        u32 guard_count = 0;
-        u32 guard = dim->nbue[t] > 0 ? qp_in->idxe[t][0] : -1;
         f64* lbu = qp_native->lbu[t];
         f64* ubu = qp_native->ubu[t];
         u32* idxb = qp_native->idxbu[t];
         for (u32 i=0; i<dim->nbu[t]; ++i) {
-            if (i == guard) {
-                guard = dim->nbue[t] > guard_count+1 ? qp_in->idxe[t][guard_count+1] : -1;
-                guard_count += 1;
+            if (acados_daocp_contains_index(qp_in->idxe[t], 0, dim->nbue[t], i))
                 continue;
-            }
             *(lbu++) = BLASFEO_DVECEL(qp_in->d+t, i);
             *(ubu++) = -BLASFEO_DVECEL(qp_in->d+t, dim->ng[t]+dim->nb[t]+i);
             *(idxb++) = qp_in->idxb[t][i];
@@ -496,37 +504,29 @@ static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim,
     }
     // x bounds
     for (u32 t=1; t<=N; ++t) {
-        int guard_count = 0;
-        int guard = dim->nbxe[t] > 0 ? qp_in->idxe[t][dim->nbue[t]] : -1;
         f64* lbx = qp_native->lbx[t];
         f64* ubx = qp_native->ubx[t];
         u32* idxb = qp_native->idxbx[t];
         for (u32 i=0; i<dim->nbx[t]; ++i) {
-            if (i + dim->nbu[t] == guard) {
-                guard = dim->nbxe[t] > guard_count+1 ? qp_in->idxe[t][dim->nbue[t]+guard_count+1] : -1;
-                guard_count += 1;
+            int bound_index = dim->nbu[t]+i;
+            if (acados_daocp_contains_index(qp_in->idxe[t], dim->nbue[t], dim->nbxe[t], bound_index))
                 continue;
-            }
-            *(lbx++) = BLASFEO_DVECEL(qp_in->d+t, dim->nbu[t]+i);
-            *(ubx++) = -BLASFEO_DVECEL(qp_in->d+t, dim->ng[t]+dim->nb[t]+dim->nbu[t]+i);
-            *(idxb++) = qp_in->idxb[t][dim->nbu[t]+i];
+            *(lbx++) = BLASFEO_DVECEL(qp_in->d+t, bound_index);
+            *(ubx++) = -BLASFEO_DVECEL(qp_in->d+t, dim->ng[t]+dim->nb[t]+bound_index);
+            *(idxb++) = qp_in->idxb[t][bound_index] - dim->nu[t];
         }
     }
     // general inequalities
     for (u32 t=0; t<=N; ++t) {
-        int guard_count = 0;
-        int guard = dim->nge[t] > 0 ? qp_in->idxe[t][dim->nbue[t]+dim->nbxe[t]] : -1;
         f64* lb = qp_native->cl[t];
         f64* ub = qp_native->cu[t];
-        f64* Cu = qp_native->Cu[t];
-        f64* Cx = qp_native->Cx[t];
+        f64* Cu = t < N ? qp_native->Cu[t] : 0;
+        f64* Cx = t > 0 ? qp_native->Cx[t] : 0;
         daocp_constraint_type* contypes = wrk->contypes[t];
         for (u32 i=0; i<dim->ng[t]; ++i) {
-            if (i + dim->nbu[t] + dim->nbx[t] == guard) {
-                guard = dim->nge[t] > guard_count+1 ? qp_in->idxe[t][dim->nbue[t]+dim->nbxe[t]+guard_count+1] : -1;
-                guard_count += 1;
+            int constraint_index = dim->nb[t]+i;
+            if (acados_daocp_contains_index(qp_in->idxe[t], dim->nbue[t]+dim->nbxe[t], dim->nge[t], constraint_index))
                 continue;
-            }
             *lb = BLASFEO_DVECEL(qp_in->d+t, dim->nb[t]+i);
             *ub = -BLASFEO_DVECEL(qp_in->d+t, dim->ng[t]+2*dim->nb[t]+i);
 
@@ -568,8 +568,8 @@ static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim,
                     if (!nonzero) *contypes = DAOCP_ONLY_U; 
                 }
             }
-            Cu += dim->nu[t];
-            Cx += dim->nx[t];
+            if (t < N) Cu += dim->nu[t];
+            if (t > 0) Cx += dim->nx[t];
             ++contypes;
         }
     }
@@ -577,14 +577,16 @@ static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim,
     // Equality constraints.
     for (u32 t=0; t<=N; ++t) {
         f64* d = qp_native->d[t];
-        f64* Du = qp_native->Du[t];
+        f64* Du = t < N ? qp_native->Du[t] : 0;
         f64* Dx = qp_native->Dx[t];
 
         // Input bound equalities
         for (u32 i=0; i<dim->nbue[t]; ++i) {
-            u32 uidx = qp_in->idxb[t][qp_in->idxe[t][i]];
-            d[i] = BLASFEO_DVECEL(qp_in->d+t, qp_in->idxe[t][i]);
-            memset(Du + i*dim->nu[t], 0, dim->nu[t]*sizeof(f64));
+            int bound_index = qp_in->idxe[t][i];
+            u32 uidx = qp_in->idxb[t][bound_index];
+            d[i] = BLASFEO_DVECEL(qp_in->d+t, bound_index);
+            if (dim->nu[t] > 0)
+                memset(Du + i*dim->nu[t], 0, dim->nu[t]*sizeof(f64));
             memset(Dx + i*dim->nx[t], 0, dim->nx[t]*sizeof(f64));
             Du[i*dim->nu[t] + uidx] = 1.0;
         }
@@ -592,9 +594,11 @@ static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim,
         if (t!=0) {
             for (u32 i=0; i<dim->nbxe[t]; ++i) {
                 u32 offset = dim->nbue[t] + i;
-                u32 xidx = qp_in->idxb[t][dim->nbu[t]+qp_in->idxe[t][dim->nbue[t]+i]];
-                d[offset] = BLASFEO_DVECEL(qp_in->d+t, dim->nbu[t]+qp_in->idxe[t][dim->nbue[t]+i]);
-                memset(Du + offset*dim->nu[t], 0, dim->nu[t]*sizeof(f64));
+                int bound_index = qp_in->idxe[t][dim->nbue[t]+i];
+                u32 xidx = qp_in->idxb[t][bound_index] - dim->nu[t];
+                d[offset] = BLASFEO_DVECEL(qp_in->d+t, bound_index);
+                if (dim->nu[t] > 0)
+                    memset(Du + offset*dim->nu[t], 0, dim->nu[t]*sizeof(f64));
                 memset(Dx + offset*dim->nx[t], 0, dim->nx[t]*sizeof(f64));
                 Dx[offset*dim->nx[t] + xidx] = 1.0;
             }
@@ -602,11 +606,13 @@ static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim,
         // General equalities
         for (u32 i=0; i<dim->nge[t]; ++i) {
             u32 offset = dim->nbue[t] + (t > 0 ? dim->nbxe[t] : 0) + i;
-            d[offset] = BLASFEO_DVECEL(qp_in->d+t, dim->nb[t]+qp_in->idxe[t][dim->nbue[t]+dim->nbxe[t]+i]);
+            int constraint_index = qp_in->idxe[t][dim->nbue[t]+dim->nbxe[t]+i];
+            int general_index = constraint_index - dim->nb[t];
+            d[offset] = BLASFEO_DVECEL(qp_in->d+t, constraint_index);
             for (u32 j=0; j<dim->nu[t]; ++j)
-                Du[offset*dim->nu[t]+j] = BLASFEO_DMATEL(qp_in->DCt+t, j, qp_in->idxe[t][dim->nbue[t]+dim->nbxe[t]+i]);
+                Du[offset*dim->nu[t]+j] = BLASFEO_DMATEL(qp_in->DCt+t, j, general_index);
             for (u32 j=0; j<dim->nx[t]; ++j)
-                Dx[offset*dim->nx[t]+j] = BLASFEO_DMATEL(qp_in->DCt+t, dim->nu[t]+j, qp_in->idxe[t][dim->nbue[t]+dim->nbxe[t]+i]);
+                Dx[offset*dim->nx[t]+j] = BLASFEO_DMATEL(qp_in->DCt+t, dim->nu[t]+j, general_index);
         }
     }
 }
@@ -660,10 +666,10 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     // (Shadow) copy dynamics and cost
     qp_native->BAwt = qp_in->BAbt;
     qp_native->RSQrq = qp_in->RSQrq;
-    for (u32 t=0; t<N; ++t)
-        blasfeo_drowin(nx[t+1], 1.0, qp_in->b+t, 0, qp_in->BAbt+t, nu[t]+nx[t], 0);
-    for (u32 t=0; t<N; ++t)
-        blasfeo_drowin(nu[t]+nx[t], 1.0, qp_in->rqz+t, 0, qp_in->RSQrq+t, nu[t]+nx[t], 0);
+    for (int t=0; t<dim->N; ++t)
+        blasfeo_drowin(dim->nx[t+1], 1.0, qp_in->b+t, 0, qp_in->BAbt+t, dim->nu[t]+dim->nx[t], 0);
+    for (int t=0; t<=dim->N; ++t)
+        blasfeo_drowin(dim->nu[t]+dim->nx[t], 1.0, qp_in->rqz+t, 0, qp_in->RSQrq+t, dim->nu[t]+dim->nx[t], 0);
     daocp_workspace* wrk = (daocp_workspace*) mem->workspace;
     wrk->dims = &qp_native->dims;
     // TODO: Handle first_run != 0
