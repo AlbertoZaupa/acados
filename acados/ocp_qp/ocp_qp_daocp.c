@@ -657,8 +657,13 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     
     // Conversion of data structures
     daocp_qp* qp_native = &mem->qp;
+    // (Shadow) copy dynamics and cost
     qp_native->BAwt = qp_in->BAbt;
     qp_native->RSQrq = qp_in->RSQrq;
+    for (u32 t=0; t<N; ++t)
+        blasfeo_drowin(nx[t+1], 1.0, qp_in->b+t, 0, qp_in->BAbt+t, nu[t]+nx[t], 0);
+    for (u32 t=0; t<N; ++t)
+        blasfeo_drowin(nu[t]+nx[t], 1.0, qp_in->rqz+t, 0, qp_in->RSQrq+t, nu[t]+nx[t], 0);
     daocp_workspace* wrk = (daocp_workspace*) mem->workspace;
     wrk->dims = &qp_native->dims;
     // TODO: Handle first_run != 0
