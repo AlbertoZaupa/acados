@@ -42,3 +42,6 @@
 [submodule "external/Clarabel.cpp"]
 	path = external/Clarabel.cpp
 	url = https://github.com/acados/Clarabel.cpp.git
+[submodule "external/daocp"]
+	path = external/daocp
+	url = git@github.com:AlbertoZaupa/daocp.git

@@ -133,10 +133,7 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     int* nx = dims->nx;
     int* nu = dims->nu;
     int* nb = dims->nb;
-    int* nbx = dims->nbx;
-    int* nbu = dims->nbu;
     int* ng = dims->ng; 
-    int* ns = dims->ns;
     int* nge = dims->nge;
     int* nbue = dims->nbue;
     int* nbxe = dims->nbxe;
@@ -219,8 +216,9 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     return size;
 }
 
-static inline void* assign_ptr_vec(char** ptr_vec, char* ptr, int* size_vec1, int* size_vec2, int* size_vec3, int unit_size, int n)
+static inline void* assign_ptr_vec(void* ptr_vec_, char* ptr, int* size_vec1, int* size_vec2, int* size_vec3, int unit_size, int n)
 {
+    char** ptr_vec = (char**) ptr_vec_;
     for (u32 i=0; i<n; ++i) {
         ptr_vec[i] = ptr;
         ptr += (size_vec1[i] - 
@@ -231,10 +229,11 @@ static inline void* assign_ptr_vec(char** ptr_vec, char* ptr, int* size_vec1, in
 }
 
 static inline void* assign_ptr_mat(
-    char** ptr_mat, char* ptr, 
+    void* ptr_mat_, char* ptr,
     int* size_vec1, int* size_vec2, int* size_vec3, int* size_vec4, 
     int* size_vec5, int unit_size, int n)
 {
+    char** ptr_mat = (char**) ptr_mat_;
     for (u32 i=0; i<n; ++i) {
         ptr_mat[i] = ptr;
         ptr += (size_vec1[i] - 
@@ -260,36 +259,35 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     int* nbu = dims->nbu;
     int* nbx = dims->nbx;
     int* ng = dims->ng; 
-    int* ns = dims->ns;
     int* nge = dims->nge;
     int* nbue = dims->nbue;
     int* nbxe = dims->nbxe;
 
     // daocp_qp data
-    mem->qp.dims.nbu = (c_ptr += sizeof(daocp_workspace));
-    mem->qp.dims.nbx = (c_ptr += N*sizeof(u32));
-    mem->qp.dims.ng = (c_ptr += (N+1)*sizeof(u32));
-    mem->qp.dims.ne = (c_ptr += (N+1)*sizeof(u32));
-    mem->qp.x0 = (c_ptr += (N+1)*sizeof(u32));
-    mem->qp.lbu = (c_ptr += nx[0]*sizeof(f64));
-    mem->qp.lbx = (c_ptr += N*sizeof(f64*));
-    wrk->lbu_wrk = (c_ptr += (N+1)*sizeof(f64*));
-    wrk->lbx_wrk = (c_ptr += N*sizeof(f64*));
-    mem->qp.ubu = (c_ptr += (N+1)*sizeof(f64*));
-    mem->qp.ubx = (c_ptr += N*sizeof(f64*));
-    wrk->ubu_wrk = (c_ptr += (N+1)*sizeof(f64*));
-    wrk->ubx_wrk = (c_ptr += N*sizeof(f64*));
-    mem->qp.cl = (c_ptr += (N+1)*sizeof(f64*));
-    mem->qp.cu = (c_ptr += (N+1)*sizeof(f64*));
-    wrk->lg_wrk = (c_ptr += (N+1)*sizeof(f64*));
-    wrk->ug_wrk = (c_ptr += (N+1)*sizeof(f64*));
-    mem->qp.d = (c_ptr += (N+1)*sizeof(f64*));
-    mem->qp.Cu = (c_ptr += (N+1)*sizeof(f64*));
-    mem->qp.Cx = (c_ptr += N*sizeof(f64*));
-    mem->qp.Du = (c_ptr += (N+1)*sizeof(f64*));
-    mem->qp.Dx = (c_ptr += N*sizeof(f64*));
-    mem->qp.idxbu = (c_ptr += (N+1)*sizeof(f64*));
-    mem->qp.idxbx = (c_ptr += N*sizeof(u32*));
+    mem->qp.dims.nbu = (u32*) (c_ptr += sizeof(daocp_workspace));
+    mem->qp.dims.nbx = (u32*) (c_ptr += N*sizeof(u32));
+    mem->qp.dims.ng = (u32*) (c_ptr += (N+1)*sizeof(u32));
+    mem->qp.dims.ne = (u32*) (c_ptr += (N+1)*sizeof(u32));
+    mem->qp.x0 = (f64*) (c_ptr += (N+1)*sizeof(u32));
+    mem->qp.lbu = (f64**) (c_ptr += nx[0]*sizeof(f64));
+    mem->qp.lbx = (f64**) (c_ptr += N*sizeof(f64*));
+    wrk->lbu_wrk = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    wrk->lbx_wrk = (f64**) (c_ptr += N*sizeof(f64*));
+    mem->qp.ubu = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    mem->qp.ubx = (f64**) (c_ptr += N*sizeof(f64*));
+    wrk->ubu_wrk = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    wrk->ubx_wrk = (f64**) (c_ptr += N*sizeof(f64*));
+    mem->qp.cl = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    mem->qp.cu = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    wrk->lg_wrk = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    wrk->ug_wrk = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    mem->qp.d = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    mem->qp.Cu = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    mem->qp.Cx = (f64**) (c_ptr += N*sizeof(f64*));
+    mem->qp.Du = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    mem->qp.Dx = (f64**) (c_ptr += N*sizeof(f64*));
+    mem->qp.idxbu = (u32**) (c_ptr += (N+1)*sizeof(f64*));
+    mem->qp.idxbx = (u32**) (c_ptr += N*sizeof(u32*));
     c_ptr += (N+1)*sizeof(u32*);
     c_ptr = assign_ptr_vec(mem->qp.lbu, c_ptr, nbu, nbue, 0, sizeof(f64), N);
     c_ptr = assign_ptr_vec(wrk->lbu_wrk, c_ptr, nbu, nbue, 0, sizeof(f64), N);
@@ -305,16 +303,16 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     c_ptr = assign_ptr_vec(wrk->lg_wrk, c_ptr, ng, nge, 0, sizeof(f64), N+1);
     c_ptr = assign_ptr_vec(mem->qp.cu, c_ptr, ng, nge, 0, sizeof(f64), N+1);
     c_ptr = assign_ptr_vec(wrk->ug_wrk, c_ptr, ng, nge, 0, sizeof(f64), N+1);
-    mem->qp.d[0] = c_ptr; c_ptr += (nbue[0]+nge[0])*sizeof(f64);
+    mem->qp.d[0] = (f64*) c_ptr; c_ptr += (nbue[0]+nge[0])*sizeof(f64);
     for (u32 t=1; t<=N; ++t) {
-        mem->qp.d[t] = c_ptr;
+        mem->qp.d[t] = (f64*) c_ptr;
         c_ptr += (nbue[t]+nbxe[t]+nge[t])*sizeof(f64);
     }
     c_ptr = assign_ptr_mat(mem->qp.Cu, c_ptr, ng, nge, 0, 0, nu, sizeof(f64), N);
     mem->qp.Cx[0]=0; c_ptr = assign_ptr_mat(mem->qp.Cx+1, c_ptr, ng+1, nge+1, 0, 0, nx+1, sizeof(f64), N);
-    mem->qp.Du[0] = c_ptr; c_ptr += (nge[0]+nbue[0])*nu[0]*sizeof(f64);
+    mem->qp.Du[0] = (f64*) c_ptr; c_ptr += (nge[0]+nbue[0])*nu[0]*sizeof(f64);
     c_ptr = assign_ptr_mat(mem->qp.Du+1, c_ptr, nge+1, 0, nbue+1, nbxe+1, nu+1, sizeof(f64), N-1);
-    mem->qp.Dx[0]= c_ptr; c_ptr += (nge[0]+nbue[0])*nx[0]*sizeof(f64); 
+    mem->qp.Dx[0]= (f64*) c_ptr; c_ptr += (nge[0]+nbue[0])*nx[0]*sizeof(f64);
     c_ptr = assign_ptr_mat(mem->qp.Dx+1, c_ptr, nge+1, 0, nbue+1, nbxe+1, nx+1, sizeof(f64), N);
 
     // daocp_workspace data
@@ -325,37 +323,36 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     neq -= nbxe[0];
     for (u32 t=0; t<=N; ++t) nin += ng[t]+nb[t]-nge[t]-nbue[t]-nbxe[t];
 
-    wrk->P = c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
-    wrk->Ku = c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
-    wrk->Ke = c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
-    wrk->Luu = c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
-    wrk->Lue = c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
-    wrk->Lee = c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
-    wrk->ux_lqr = c_ptr; c_ptr+=(N+1)*sizeof(struct blasfeo_dvec);
-    wrk->eta_lqr = c_ptr; c_ptr+=N*sizeof(struct blasfeo_dvec);
-    wrk->b = c_ptr; c_ptr+=N*sizeof(struct blasfeo_dvec);
+    wrk->P = (struct blasfeo_dmat*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
+    wrk->Ku = (struct blasfeo_dmat*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
+    wrk->Ke = (struct blasfeo_dmat*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
+    wrk->Luu = (struct blasfeo_dmat*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
+    wrk->Lue = (struct blasfeo_dmat*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
+    wrk->Lee = (struct blasfeo_dmat*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
+    wrk->ux_lqr = (struct blasfeo_dvec*) c_ptr; c_ptr+=(N+1)*sizeof(struct blasfeo_dvec);
+    wrk->eta_lqr = (struct blasfeo_dvec*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dvec);
+    wrk->b = (struct blasfeo_dvec*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dvec);
 
-    wrk->u = c_ptr; c_ptr += N*sizeof(f64*);
-    wrk->x = c_ptr; c_ptr += (N+1)*sizeof(f64*);
-    wrk->eta = c_ptr; c_ptr += N*sizeof(f64*);
-    wrk->contypes = c_ptr; c_ptr += (N+1)*sizeof(daocp_constraint_type*);
-    wrk->as.constraint_status = c_ptr; c_ptr += (N+1)*sizeof(u32*);
+    wrk->u = (f64**) c_ptr; c_ptr += N*sizeof(f64*);
+    wrk->x = (f64**) c_ptr; c_ptr += (N+1)*sizeof(f64*);
+    wrk->eta = (f64**) c_ptr; c_ptr += N*sizeof(f64*);
+    wrk->contypes = (daocp_constraint_type**) c_ptr; c_ptr += (N+1)*sizeof(daocp_constraint_type*);
+    wrk->as.constraint_status = (u32**) c_ptr; c_ptr += (N+1)*sizeof(u32*);
     c_ptr = assign_ptr_vec(wrk->u, c_ptr, nu, 0, 0, sizeof(f64), N);
     c_ptr = assign_ptr_vec(wrk->eta, c_ptr, nu, 0, 0, sizeof(f64), N);
     wrk->x[0]=0; c_ptr = assign_ptr_vec(wrk->x+1, c_ptr, nx+1, 0, 0, sizeof(f64), N);
     for (u32 t=0; t<=N; ++t) {
-        wrk->contypes[t] = c_ptr;
+        wrk->contypes[t] = (daocp_constraint_type*) c_ptr;
         c_ptr += (ng[t]-nge[t])*sizeof(daocp_constraint_type);
     }
     for (u32 t=0; t<=N; ++t) {
-        wrk->as.constraint_status[t] = c_ptr;
+        wrk->as.constraint_status[t] = (u32*) c_ptr;
         c_ptr += (ng[t]+nb[t]-nbue[t]-nbxe[t]-nge[t])*sizeof(u32);
     }
-    wrk->cnu = c_ptr; c_ptr += N*sizeof(u32);
-    wrk->rho = c_ptr; c_ptr += N*sizeof(u32);
-    wrk->crho = c_ptr; c_ptr += N*sizeof(u32);
+    wrk->cnu = (u32*) c_ptr; c_ptr += N*sizeof(u32);
+    wrk->rho = (u32*) c_ptr; c_ptr += N*sizeof(u32);
+    wrk->crho = (u32*) c_ptr; c_ptr += N*sizeof(u32);
     
-    int tot_nx = nx[N];
     int tot_nu = 0;
     for (u32 t=0; t<N; ++t) {
         blasfeo_create_dmat(nx[t+1], nx[t+1], wrk->P+t, c_ptr);
@@ -378,25 +375,25 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
         blasfeo_create_dvec(nu[t], wrk->b+t, c_ptr);
         c_ptr += blasfeo_memsize_dvec(nu[t]);
 
-        tot_nx += nx[t]; tot_nu += nu[t];
+        tot_nu += nu[t];
     }
     blasfeo_create_dvec(nx[N], wrk->ux_lqr+N, c_ptr);
     c_ptr += blasfeo_memsize_dvec(nx[N]);
     
     u32 W_stride = DAOCP_MIN(tot_nu, nin)+1;
-    wrk->as.xi2con = c_ptr; c_ptr += W_stride*sizeof(daocp_constraint);
-    wrk->xi = c_ptr; c_ptr+=W_stride*sizeof(f64);
-    wrk->p = c_ptr; c_ptr+=W_stride*sizeof(f64);
-    wrk->dual_linear = c_ptr; c_ptr+=W_stride*sizeof(f64);
-    wrk->xi_sign = c_ptr; c_ptr+=W_stride*sizeof(u32);
-    wrk->Ld = c_ptr; c_ptr+=(W_stride+1)*W_stride*sizeof(f64);
-    wrk->Mu = c_ptr; c_ptr+=W_stride*tot_nu*sizeof(f64);
-    wrk->Me = c_ptr; c_ptr+=W_stride*tot_nu*sizeof(f64);
-    wrk->H = c_ptr; c_ptr+=neq*max_nx*sizeof(f64);
-    wrk->h = c_ptr; c_ptr+=neq*sizeof(f64);
-    wrk->tmp1 = c_ptr; c_ptr+=neq*sizeof(f64);
-    wrk->GEtmp = c_ptr; c_ptr+=(neq+1)*(max_nx+max_nu+1)*sizeof(f64);
-    wrk->ABtmp = c_ptr; c_ptr+=max_nx*DAOCP_MAX(max_nx, max_nu)*sizeof(f64);
+    wrk->as.xi2con = (daocp_constraint*) c_ptr; c_ptr += W_stride*sizeof(daocp_constraint);
+    wrk->xi = (f64*) c_ptr; c_ptr+=W_stride*sizeof(f64);
+    wrk->p = (f64*) c_ptr; c_ptr+=W_stride*sizeof(f64);
+    wrk->dual_linear = (f64*) c_ptr; c_ptr+=W_stride*sizeof(f64);
+    wrk->xi_sign = (u32*) c_ptr; c_ptr+=W_stride*sizeof(u32);
+    wrk->Ld = (f64*) c_ptr; c_ptr+=(W_stride+1)*W_stride*sizeof(f64);
+    wrk->Mu = (f64*) c_ptr; c_ptr+=W_stride*tot_nu*sizeof(f64);
+    wrk->Me = (f64*) c_ptr; c_ptr+=W_stride*tot_nu*sizeof(f64);
+    wrk->H = (f64*) c_ptr; c_ptr+=neq*max_nx*sizeof(f64);
+    wrk->h = (f64*) c_ptr; c_ptr+=neq*sizeof(f64);
+    wrk->tmp1 = (f64*) c_ptr; c_ptr+=neq*sizeof(f64);
+    wrk->GEtmp = (f64*) c_ptr; c_ptr+=(neq+1)*(max_nx+max_nu+1)*sizeof(f64);
+    wrk->ABtmp = (f64*) c_ptr; c_ptr+=max_nx*DAOCP_MAX(max_nx, max_nu)*sizeof(f64);
     blasfeo_create_dmat(DAOCP_MAX(max_nx, max_nu), max_nx, &wrk->tmp2, c_ptr);
     c_ptr += blasfeo_memsize_dmat(DAOCP_MAX(max_nu, max_nx), max_nx);
     blasfeo_create_dvec(max_nx, &wrk->costate0, c_ptr);
@@ -456,9 +453,9 @@ acados_size_t ocp_qp_daocp_workspace_calculate_size(void *config_, void *dims_, 
     return 0;
 }
 
-static u32 acados_daocp_contains_index(const u32 *indices, u32 offset, u32 count, u32 index)
+static u32 acados_daocp_contains_index(const int *indices, int offset, int count, int index)
 {
-    for (u32 i = 0; i < count; i++)
+    for (int i = 0; i < count; i++)
         if (indices[offset+i] == index)
             return 1;
 
@@ -690,7 +687,7 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     daocp_solve_lqr(wrk, qp_native);
     // We check whether we can use the active set information from 
     // the previous solve.
-    if (!first_run) {
+    if (!opts->first_run) {
         // Recompute cholesky of dual hessian, detecting singularity
         u32 need_reset = daocp_compute_chol_from_scratch(wrk, qp_native);
         // Compute dual minimizer and check dual feasibility
