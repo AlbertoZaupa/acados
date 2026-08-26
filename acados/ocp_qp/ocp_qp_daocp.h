@@ -54,7 +54,9 @@ typedef struct ocp_qp_daocp_memory_
 {
     daocp_qp qp;
     daocp_sol sol;
-    void* workspace; 
+    void* workspace;
+    double* equality_elimination_alphas;
+    u32* equality_elimination_pivots;
     double time_qp_solver_call;
 } ocp_qp_daocp_memory;
 
