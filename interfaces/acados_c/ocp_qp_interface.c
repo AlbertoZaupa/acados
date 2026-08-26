@@ -84,6 +84,10 @@
 #include "acados/ocp_qp/ocp_qp_clarabel.h"
 #endif
 
+#ifdef ACADOS_WITH_DAOCP
+#include "acados/ocp_qp/ocp_qp_daocp.h"
+#endif
+
 
 
 
@@ -131,6 +135,13 @@ void ocp_qp_xcond_solver_config_initialize_from_plan(
         case PARTIAL_CONDENSING_QPDUNES:
             ocp_qp_xcond_solver_config_initialize_default(solver_config);
             ocp_qp_qpdunes_config_initialize_default(solver_config->qp_solver);
+            ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
+            break;
+#endif
+#ifdef ACADOS_WITH_DAOCP
+        case PARTIAL_CONDENSING_DAOCP:
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            ocp_qp_daocp_config_initialize_default(solver_config->qp_solver);
             ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
             break;
 #endif
@@ -226,6 +237,12 @@ ocp_qp_xcond_solver_config *ocp_qp_xcond_solver_config_create_from_name(const ch
     else if (!strcmp(solver_name, "PARTIAL_CONDENSING_QPDUNES"))
     {
         plan.qp_solver = PARTIAL_CONDENSING_QPDUNES;
+    }
+#endif
+#ifdef ACADOS_WITH_DAOCP
+    else if (!strcmp(solver_name, "PARTIAL_CONDENSING_DAOCP"))
+    {
+        plan.qp_solver = PARTIAL_CONDENSING_DAOCP;
     }
 #endif
 #ifdef ACADOS_WITH_QPOASES
