@@ -80,6 +80,28 @@ if(ACADOS_WITH_QPOASES)
     add_subdirectory(qpoases)
 endif()
 
+if(ACADOS_WITH_DAOCP)
+    file(GLOB DAOCP_SRC "${CMAKE_CURRENT_SOURCE_DIR}/daocp/src/*.c")
+
+    add_library(daocp ${DAOCP_SRC})
+
+    target_include_directories(daocp PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/daocp/include>
+        $<INSTALL_INTERFACE:include/daocp/include>)
+
+    target_link_libraries(daocp PUBLIC blasfeo)
+
+    install(TARGETS daocp EXPORT daocpConfig
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin)
+
+    install(EXPORT daocpConfig DESTINATION cmake)
+
+    file(GLOB DAOCP_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/daocp/include/*.h")
+    install(FILES ${DAOCP_HEADERS} DESTINATION include/daocp/include)
+endif()
+
 if(ACADOS_WITH_DAQP)
     set(PROFILING OFF CACHE BOOL "Turn off profiling in DAQP")
     set(SOFT_WEIGHTS ON CACHE BOOL "Turn on soft weights in DAQP")

@@ -42,6 +42,7 @@ Adjust these options based on your requirements.
 | **Option Name**                | **Description**                                            | **Default Value** |
 |--------------------------------|------------------------------------------------------------|-------------------|
 | `ACADOS_WITH_QPOASES`          | Compile acados with optional QP solver qpOASES             | `OFF`             |
+| `ACADOS_WITH_DAOCP`            | Compile acados with optional QP solver DAOCP                | `OFF`             |
 | `ACADOS_WITH_DAQP`             | Compile acados with optional QP solver DAQP                | `OFF`             |
 | `ACADOS_WITH_QPDUNES`          | Compile acados with optional QP solver qpDUNES             | `OFF`             |
 | `ACADOS_WITH_OSQP`             | Compile acados with optional QP solver OSQP                | `OFF`             |
