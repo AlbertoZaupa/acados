@@ -46,6 +46,7 @@ typedef struct ocp_qp_daocp_opts_
 {
     daocp_args daocp_opts;
     int print_level;
+    int warm_start;
     int first_run;
 } ocp_qp_daocp_opts;
 
@@ -68,9 +69,15 @@ void ocp_qp_daocp_opts_initialize_default(void *config, void *dims, void *opts_)
 //
 void ocp_qp_daocp_opts_update(void *config, void *dims, void *opts_);
 //
+void ocp_qp_daocp_opts_set(void *config, void *opts_, const char *field, void *value);
+//
+void ocp_qp_daocp_opts_get(void *config, void *opts_, const char *field, void *value);
+//
 acados_size_t ocp_qp_daocp_memory_calculate_size(void *config, void *dims, void *opts_);
 //
 void *ocp_qp_daocp_memory_assign(void *config, void *dims, void *opts_, void *raw_memory);
+//
+void ocp_qp_daocp_memory_get(void *config, void *mem_, const char *field, void *value);
 //
 acados_size_t ocp_qp_daocp_workspace_calculate_size(void *config, void *dims, void *opts_);
 //
@@ -86,4 +93,4 @@ void ocp_qp_daocp_config_initialize_default(void *config);
 } /* extern "C" */
 #endif
 
-#endif  // ACADOS_OCP_QP_OCP_QP_CLARABEL_H_
+#endif  // ACADOS_OCP_QP_OCP_QP_DAOCP_H_

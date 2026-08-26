@@ -30,6 +30,7 @@
 
 
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 
 // daocp
@@ -68,9 +69,9 @@ void ocp_qp_daocp_opts_initialize_default(void *config_, void *dims_, void *opts
 {
     ocp_qp_daocp_opts* opts = opts_;
     opts->print_level = 0;
+    opts->warm_start = 0;
     opts->first_run = 1;
-    opts->daocp_opts.max_iter = 1000;
-    opts->daocp_opts.selection = DAOCP_SELECT_GREEDY;
+    daocp_args_set_default(&opts->daocp_opts);
     return;
 }
 
@@ -85,7 +86,7 @@ void ocp_qp_daocp_opts_set(void *config_, void *opts_, const char *field, void *
 {
     ocp_qp_daocp_opts* opts = opts_;
 
-    if (!strcmp(field, "max_iter"))
+    if (!strcmp(field, "max_iter") || !strcmp(field, "iter_max"))
     {
         int *tmp_ptr = value;
         opts->daocp_opts.max_iter = *tmp_ptr;
@@ -95,11 +96,20 @@ void ocp_qp_daocp_opts_set(void *config_, void *opts_, const char *field, void *
         int* print_level = (int *) value;
         opts->print_level = *print_level;
     }
+    else if (!strcmp(field, "warm_start"))
+    {
+        int* warm_start = (int *) value;
+        opts->warm_start = *warm_start;
+    }
     else if (!strcmp(field, "selection_strategy"))
     {
         int code = *((int*) value);
         if (code == 0) opts->daocp_opts.selection = DAOCP_SELECT_GREEDY;
-        if (code == 1) opts->daocp_opts.selection = DAOCP_SELECT_MOST_VIOLATED;
+        else if (code == 1) opts->daocp_opts.selection = DAOCP_SELECT_MOST_VIOLATED;
+        else {
+            printf("\nerror: ocp_qp_daocp_opts_set: invalid selection_strategy %d\n", code);
+            exit(1);
+        }
     }
     else
     {
@@ -112,8 +122,21 @@ void ocp_qp_daocp_opts_set(void *config_, void *opts_, const char *field, void *
 
 void ocp_qp_daocp_opts_get(void *config_, void *opts_, const char *field, void *value)
 {
-    printf("\nerror: ocp_qp_daocp_opts_get: not implemented for field %s\n", field);
-    exit(1);
+    ocp_qp_daocp_opts* opts = opts_;
+
+    if (!strcmp(field, "max_iter") || !strcmp(field, "iter_max"))
+        *((int*) value) = opts->daocp_opts.max_iter;
+    else if (!strcmp(field, "print_level"))
+        *((int*) value) = opts->print_level;
+    else if (!strcmp(field, "warm_start"))
+        *((int*) value) = opts->warm_start;
+    else if (!strcmp(field, "selection_strategy"))
+        *((int*) value) = opts->daocp_opts.selection;
+    else
+    {
+        printf("\nerror: ocp_qp_daocp_opts_get: field %s not available\n", field);
+        exit(1);
+    }
 }
 
 
@@ -241,7 +264,7 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     size += (neq+1)*(max_nx+max_nu+1)*sizeof(f64); // GEtmp
     size += max_nx*DAOCP_MAX(max_nx, max_nu)*sizeof(f64); // ABtmp
     size += DAOCP_MAX(blasfeo_memsize_dmat(max_nx, max_nx), blasfeo_memsize_dmat(max_nu, max_nx)); // tmp2
-    size += 2*blasfeo_memsize_dvec(max_nx); // costate0, costate1
+    size += 2*blasfeo_memsize_dvec(DAOCP_MAX(max_nx, max_nu)); // costate0, costate1
 
     // Row operations needed to map DA-OCP's eliminated equality multipliers
     // back to the original acados equality rows. These buffers are a tape:
@@ -250,6 +273,14 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     acados_daocp_equality_elimination_capacity(dims, &alpha_capacity, &pivot_capacity);
     size += alpha_capacity*sizeof(f64);
     size += pivot_capacity*sizeof(u32);
+
+    // Worst-case padding for three double-alignment points and two cache-line
+    // aligned BLASFEO backing-store regions.
+    size += 3*8 + 2*64;
+
+    // The enclosing xcond solver places its workspace immediately after this
+    // memory block and requires the workspace structure to stay aligned.
+    make_int_multiple_of(8, &size);
 
     return size;
 }
@@ -284,10 +315,12 @@ static inline void* assign_ptr_mat(
 
 void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *raw_memory)
 {
+    memset(raw_memory, 0, ocp_qp_daocp_memory_calculate_size(config_, dims_, opts_));
     char* c_ptr = (char*) raw_memory;
     ocp_qp_dims* dims = dims_;
     ocp_qp_daocp_memory* mem = (ocp_qp_daocp_memory*) c_ptr;
-    mem->workspace = (c_ptr += sizeof(ocp_qp_daocp_memory)); 
+    c_ptr += sizeof(ocp_qp_daocp_memory);
+    mem->workspace = c_ptr;
     daocp_workspace* wrk = mem->workspace;
 
     int N = dims->N;
@@ -306,7 +339,9 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     mem->qp.dims.nbx = (u32*) (c_ptr += N*sizeof(u32));
     mem->qp.dims.ng = (u32*) (c_ptr += (N+1)*sizeof(u32));
     mem->qp.dims.ne = (u32*) (c_ptr += (N+1)*sizeof(u32));
-    mem->qp.x0 = (f64*) (c_ptr += (N+1)*sizeof(u32));
+    c_ptr += (N+1)*sizeof(u32);
+    align_char_to(8, &c_ptr);
+    mem->qp.x0 = (f64*) c_ptr;
     mem->qp.lbu = (f64**) (c_ptr += nx[0]*sizeof(f64));
     mem->qp.lbx = (f64**) (c_ptr += N*sizeof(f64*));
     wrk->lbu_wrk = (f64**) (c_ptr += (N+1)*sizeof(f64*));
@@ -337,6 +372,7 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     wrk->ubx_wrk[0] = 0; c_ptr = assign_ptr_vec(wrk->ubx_wrk+1, c_ptr, nbx+1, nbxe+1, 0, sizeof(f64), N);
     c_ptr = assign_ptr_vec(mem->qp.idxbu, c_ptr, nbu, nbue, 0, sizeof(u32), N);
     mem->qp.idxbx[0] = 0; c_ptr = assign_ptr_vec(mem->qp.idxbx+1, c_ptr, nbx+1, nbxe+1, 0, sizeof(u32), N);
+    align_char_to(8, &c_ptr);
     c_ptr = assign_ptr_vec(mem->qp.cl, c_ptr, ng, nge, 0, sizeof(f64), N+1);
     c_ptr = assign_ptr_vec(wrk->lg_wrk, c_ptr, ng, nge, 0, sizeof(f64), N+1);
     c_ptr = assign_ptr_vec(mem->qp.cu, c_ptr, ng, nge, 0, sizeof(f64), N+1);
@@ -354,9 +390,12 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     c_ptr = assign_ptr_mat(mem->qp.Dx+1, c_ptr, nge+1, 0, nbue+1, nbxe+1, nx+1, sizeof(f64), N);
 
     // daocp_workspace data
-    int max_nx = 0; int max_nu = 0; int neq = 0; int nin = 0;
+    int max_nx = 0; int max_nu = 0; int neq = 0; int nin = 0; int tot_nu = 0;
     for (u32 t=0; t<=N; ++t) if (nx[t] > max_nx) max_nx = nx[t];
-    for (u32 t=0; t<N; ++t) if (nu[t] > max_nu) max_nu = nu[t];
+    for (u32 t=0; t<N; ++t) {
+        if (nu[t] > max_nu) max_nu = nu[t];
+        tot_nu += nu[t];
+    }
     for (u32 t=0; t<=N; ++t) neq += nge[t] + nbue[t] + nbxe[t];
     neq -= nbxe[0];
     for (u32 t=0; t<=N; ++t) nin += ng[t]+nb[t]-nge[t]-nbue[t]-nbxe[t];
@@ -378,6 +417,8 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     wrk->as.constraint_status = (u32**) c_ptr; c_ptr += (N+1)*sizeof(u32*);
     c_ptr = assign_ptr_vec(wrk->u, c_ptr, nu, 0, 0, sizeof(f64), N);
     wrk->x[0]=0; c_ptr = assign_ptr_vec(wrk->x+1, c_ptr, nx+1, 0, 0, sizeof(f64), N);
+    if (N > 0) wrk->eta[0] = (f64*) c_ptr;
+    c_ptr += tot_nu*sizeof(f64);
     for (u32 t=0; t<=N; ++t) {
         wrk->contypes[t] = (daocp_constraint_type*) c_ptr;
         c_ptr += (ng[t]-nge[t])*sizeof(daocp_constraint_type);
@@ -389,8 +430,8 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     wrk->cnu = (u32*) c_ptr; c_ptr += N*sizeof(u32);
     wrk->rho = (u32*) c_ptr; c_ptr += N*sizeof(u32);
     wrk->crho = (u32*) c_ptr; c_ptr += N*sizeof(u32);
-    
-    int tot_nu = 0;
+
+    align_char_to(64, &c_ptr);
     for (u32 t=0; t<N; ++t) {
         blasfeo_create_dmat(nx[t+1], nx[t+1], wrk->P+t, c_ptr);
         c_ptr += blasfeo_memsize_dmat(nx[t+1], nx[t+1]);
@@ -411,8 +452,6 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
         c_ptr += blasfeo_memsize_dvec(nu[t]);
         blasfeo_create_dvec(nu[t], wrk->b+t, c_ptr);
         c_ptr += blasfeo_memsize_dvec(nu[t]);
-
-        tot_nu += nu[t];
     }
     blasfeo_create_dvec(nx[N], wrk->ux_lqr+N, c_ptr);
     c_ptr += blasfeo_memsize_dvec(nx[N]);
@@ -423,6 +462,7 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     wrk->p = (f64*) c_ptr; c_ptr+=W_stride*sizeof(f64);
     wrk->dual_linear = (f64*) c_ptr; c_ptr+=W_stride*sizeof(f64);
     wrk->xi_sign = (u32*) c_ptr; c_ptr+=W_stride*sizeof(u32);
+    align_char_to(8, &c_ptr);
     wrk->Ld = (f64*) c_ptr; c_ptr+=(W_stride+1)*W_stride*sizeof(f64);
     wrk->Mu = (f64*) c_ptr; c_ptr+=W_stride*tot_nu*sizeof(f64);
     wrk->Me = (f64*) c_ptr; c_ptr+=W_stride*tot_nu*sizeof(f64);
@@ -431,12 +471,14 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     wrk->tmp1 = (f64*) c_ptr; c_ptr+=neq*sizeof(f64);
     wrk->GEtmp = (f64*) c_ptr; c_ptr+=(neq+1)*(max_nx+max_nu+1)*sizeof(f64);
     wrk->ABtmp = (f64*) c_ptr; c_ptr+=max_nx*DAOCP_MAX(max_nx, max_nu)*sizeof(f64);
+    align_char_to(64, &c_ptr);
     blasfeo_create_dmat(DAOCP_MAX(max_nx, max_nu), max_nx, &wrk->tmp2, c_ptr);
     c_ptr += blasfeo_memsize_dmat(DAOCP_MAX(max_nu, max_nx), max_nx);
-    blasfeo_create_dvec(max_nx, &wrk->costate0, c_ptr);
-    c_ptr += blasfeo_memsize_dvec(max_nx);
-    blasfeo_create_dvec(max_nx, &wrk->costate1, c_ptr);
-    c_ptr += blasfeo_memsize_dvec(max_nx);
+    int max_nx_nu = DAOCP_MAX(max_nx, max_nu);
+    blasfeo_create_dvec(max_nx_nu, &wrk->costate0, c_ptr);
+    c_ptr += blasfeo_memsize_dvec(max_nx_nu);
+    blasfeo_create_dvec(max_nx_nu, &wrk->costate1, c_ptr);
+    c_ptr += blasfeo_memsize_dvec(max_nx_nu);
 
     acados_size_t alpha_capacity, pivot_capacity;
     acados_daocp_equality_elimination_capacity(dims, &alpha_capacity, &pivot_capacity);
@@ -445,7 +487,9 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     mem->equality_elimination_pivots = (u32*) c_ptr;
     c_ptr += pivot_capacity*sizeof(u32);
 
-    assert((char *) raw_memory + ocp_qp_daocp_memory_calculate_size(config_, dims, opts_) == c_ptr);
+    ((ocp_qp_daocp_opts*) opts_)->first_run = 1;
+
+    assert((char *) raw_memory + ocp_qp_daocp_memory_calculate_size(config_, dims, opts_) >= c_ptr);
 
     return mem;
 }
@@ -480,10 +524,8 @@ void ocp_qp_daocp_memory_get(void *config_, void *mem_, const char *field, void*
 
 void ocp_qp_daocp_memory_reset(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, void *work_)
 {
-    // ocp_qp_in *qp_in = qp_in_;
-    // reset memory
-    printf("acados: reset daocp_mem not implemented.\n");
-    exit(1);
+    ocp_qp_daocp_opts* opts = opts_;
+    opts->first_run = 1;
 }
 
 
@@ -1082,16 +1124,23 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     acados_tic(&interface_timer);
 
     // QP validation
+    if (qp_in->dim->N < 1) {
+        printf("\nDAOCP requires a horizon of at least one shooting interval.\n");
+        return ACADOS_QP_FAILURE;
+    }
     if (qp_in->dim->nx[0] != qp_in->dim->nbxe[0]) {
         printf("\nDAOCP can only handle problems with fixed initial state.\n");
-        exit(1);
+        return ACADOS_QP_FAILURE;
     }
     for (u32 t=0; t<=qp_in->dim->N; ++t) 
         if (qp_in->dim->ns[t] != 0) {
-            printf("\nDAOCP cannot support slack variables yet.\n");
-            exit(1);
+            printf("\nDAOCP cannot support the %d slack variables at stage %u "
+                   "(nx=%d, nu=%d, nb=%d, ng=%d, nbxe=%d, nbue=%d, nge=%d).\n",
+                   qp_in->dim->ns[t], t, qp_in->dim->nx[t], qp_in->dim->nu[t],
+                   qp_in->dim->nb[t], qp_in->dim->ng[t], qp_in->dim->nbxe[t],
+                   qp_in->dim->nbue[t], qp_in->dim->nge[t]);
+            return ACADOS_QP_FAILURE;
         }
-    
     // Conversion of data structures
     daocp_qp* qp_native = &mem->qp;
     // (Shadow) copy dynamics and cost
@@ -1103,9 +1152,8 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
         blasfeo_drowin(dim->nu[t]+dim->nx[t], 1.0, qp_in->rqz+t, 0, qp_in->RSQrq+t, dim->nu[t]+dim->nx[t], 0);
     daocp_workspace* wrk = (daocp_workspace*) mem->workspace;
     wrk->dims = &qp_native->dims;
-    // TODO: Handle first_run != 0
     acados_daocp_process_constraints(qp_in, dim, qp_native, wrk);
-    if (opts->first_run) acados_daocp_init_workspace(wrk);
+    if (opts->first_run || !opts->warm_start) acados_daocp_init_workspace(wrk);
     // Set solution pointers
     mem->sol.ux = qp_out->ux;
 
@@ -1134,11 +1182,16 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
         if (need_reset) daocp_reset_working_set(wrk);
     }
     daocp_solve(&opts->daocp_opts, qp_native, wrk, &mem->sol);
+    opts->first_run = 0;
     mem->time_qp_solver_call = acados_toc(&solver_call_timer);
 
     /* fill qp_out */
     acados_daocp_compute_dual_solution(qp_in, qp_out, wrk, mem);
     ocp_qp_compute_t(qp_in, qp_out);
+
+    if (opts->print_level > 0)
+        printf("DA-OCP status: %d, iterations: %u, active constraints: %u\n",
+               wrk->status, wrk->iters, wrk->as.n_active);
 
     info->solve_QP_time = acados_toc(&qp_timer);
     info->total_time = acados_toc(&tot_timer);
@@ -1151,6 +1204,8 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
         acados_status = ACADOS_SUCCESS;
     else if (status==DAOCP_MAX_ITER)
         acados_status = ACADOS_MAXITER;
+    else if (status==DAOCP_INFEASIBLE)
+        acados_status = ACADOS_INFEASIBLE;
 
     return acados_status;
 }
@@ -1159,19 +1214,19 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
 
 void ocp_qp_daocp_eval_adj_sens(void *config_, void *param_qp_in_, void *seed, void *sens_qp_out_, void *opts_, void *mem_, void *work_)
 {
-    printf("\nerror: ocp_qp_clarabel_eval_adj_sens: not implemented yet\n");
+    printf("\nerror: ocp_qp_daocp_eval_adj_sens: not implemented yet\n");
     exit(1);
 }
 
 void ocp_qp_daocp_eval_forw_sens(void *config_, void *param_qp_in_, void *seed, void *sens_qp_out_, void *opts_, void *mem_, void *work_)
 {
-    printf("\nerror: ocp_qp_clarabel_eval_forw_sens: not implemented yet\n");
+    printf("\nerror: ocp_qp_daocp_eval_forw_sens: not implemented yet\n");
     exit(1);
 }
 
 void ocp_qp_daocp_solver_get(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, const char *field, int stage, void* value, int size1, int size2)
 {
-    printf("\nerror: ocp_qp_clarabel_solver_get: not implemented yet\n");
+    printf("\nerror: ocp_qp_daocp_solver_get: not implemented yet\n");
     exit(1);
 }
 
