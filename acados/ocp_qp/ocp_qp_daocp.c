@@ -1165,13 +1165,29 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     // Interface work done
     info->interface_time = acados_toc(&interface_timer);
 
-    // TODO: Handle first_solve != 0
     acados_tic(&qp_timer);
     // The following calls before daocp_solve are effectively
     // part of the solver.
     acados_tic(&solver_call_timer); 
     daocp_solve_riccati(wrk, qp_native);
     daocp_solve_lqr(wrk, qp_native);
+    // Compute dual linear term
+    for (u32 i=0; i<wrk->as.n_active; ++i) {
+        daocp_constraint* c = wrk->as.xi2con + i;
+        f64* p;
+        switch (c->type) {
+            case DAOCP_BOUND_U:
+                p = (c->is_upper ? wrk->ubu_wrk : wrk->lbu_wrk)[c->t];
+                break;
+            case DAOCP_BOUND_X:
+                p = (c->is_upper ? wrk->ubx_wrk : wrk->lbx_wrk)[c->t];
+                break;
+            default:
+                p = (c->is_upper ? wrk->ug_wrk : wrk->lg_wrk)[c->t];
+                break;
+        }
+        wrk->dual_linear[i] = p[c->idx];
+    } 
     // We check whether we can use the active set information from 
     // the previous solve.
     if (!opts->first_run) {
