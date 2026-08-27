@@ -111,6 +111,12 @@ void ocp_qp_daocp_opts_set(void *config_, void *opts_, const char *field, void *
             exit(1);
         }
     }
+    else if (!strcmp(field, "tol_stat") || !strcmp(field, "tol_eq")
+             || !strcmp(field, "tol_ineq") || !strcmp(field, "tol_comp"))
+    {
+        /* DAOCP does not expose termination tolerances. These fields are
+         * nevertheless set unconditionally by the OCP NLP option layer. */
+    }
     else
     {
         printf("\nWARNING: ocp_qp_daocp_opts_set: field: %s not interfaced yet. Ignoring option and \n", field);
@@ -315,7 +321,6 @@ static inline void* assign_ptr_mat(
 
 void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *raw_memory)
 {
-    memset(raw_memory, 0, ocp_qp_daocp_memory_calculate_size(config_, dims_, opts_));
     char* c_ptr = (char*) raw_memory;
     ocp_qp_dims* dims = dims_;
     ocp_qp_daocp_memory* mem = (ocp_qp_daocp_memory*) c_ptr;
