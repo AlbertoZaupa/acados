@@ -48,6 +48,8 @@ typedef struct ocp_qp_daocp_opts_
     int print_level;
     int warm_start;
     int first_run;
+    int detect_input_bound_equalities;
+    double equality_detection_tolerance;
 } ocp_qp_daocp_opts;
 
 
@@ -58,6 +60,8 @@ typedef struct ocp_qp_daocp_memory_
     void* workspace;
     double* equality_elimination_alphas;
     u32* equality_elimination_pivots;
+    u32** detected_input_equalities;
+    u32* num_detected_input_equalities;
     double time_qp_solver_call;
 } ocp_qp_daocp_memory;
 

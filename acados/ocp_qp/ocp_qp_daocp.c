@@ -71,6 +71,8 @@ void ocp_qp_daocp_opts_initialize_default(void *config_, void *dims_, void *opts
     opts->print_level = 0;
     opts->warm_start = 0;
     opts->first_run = 1;
+    opts->detect_input_bound_equalities = 1;
+    opts->equality_detection_tolerance = 0.0;
     daocp_args_set_default(&opts->daocp_opts);
     return;
 }
@@ -111,6 +113,19 @@ void ocp_qp_daocp_opts_set(void *config_, void *opts_, const char *field, void *
             exit(1);
         }
     }
+    else if (!strcmp(field, "detect_input_bound_equalities"))
+    {
+        opts->detect_input_bound_equalities = *((int*) value);
+    }
+    else if (!strcmp(field, "equality_detection_tolerance"))
+    {
+        opts->equality_detection_tolerance = *((double*) value);
+        if (opts->equality_detection_tolerance < 0.0)
+        {
+            printf("\nerror: equality_detection_tolerance must be nonnegative\n");
+            exit(1);
+        }
+    }
     else if (!strcmp(field, "tol_stat") || !strcmp(field, "tol_eq")
              || !strcmp(field, "tol_ineq") || !strcmp(field, "tol_comp"))
     {
@@ -138,6 +153,10 @@ void ocp_qp_daocp_opts_get(void *config_, void *opts_, const char *field, void *
         *((int*) value) = opts->warm_start;
     else if (!strcmp(field, "selection_strategy"))
         *((int*) value) = opts->daocp_opts.selection;
+    else if (!strcmp(field, "detect_input_bound_equalities"))
+        *((int*) value) = opts->detect_input_bound_equalities;
+    else if (!strcmp(field, "equality_detection_tolerance"))
+        *((double*) value) = opts->equality_detection_tolerance;
     else
     {
         printf("\nerror: ocp_qp_daocp_opts_get: field %s not available\n", field);
@@ -152,9 +171,13 @@ void ocp_qp_daocp_opts_get(void *config_, void *opts_, const char *field, void *
  * memory
  ************************************************/
 
-static inline u32 acados_daocp_num_equalities_at_stage(const ocp_qp_dims* dims, u32 stage)
+static inline u32 acados_daocp_num_equality_capacity_at_stage(
+    const ocp_qp_dims* dims, u32 stage)
 {
-    return dims->nge[stage] + dims->nbue[stage] + (stage > 0 ? dims->nbxe[stage] : 0);
+    /* Any input bound not explicitly declared as an equality may become an
+     * automatically detected equality at run time. */
+    return dims->nge[stage] + dims->nbu[stage]
+        + (stage > 0 ? dims->nbxe[stage] : 0);
 }
 
 static inline acados_size_t acados_daocp_num_elimination_alphas(
@@ -163,7 +186,7 @@ static inline acados_size_t acados_daocp_num_elimination_alphas(
     return rank > 0 ? rank * (2*nrows - rank - 1) / 2 : 0;
 }
 
-static void acados_daocp_equality_elimination_capacity(
+static void acados_daocp_equality_elimination_max_capacity(
     const ocp_qp_dims* dims, acados_size_t* alpha_capacity, acados_size_t* pivot_capacity)
 {
     acados_size_t remaining_equalities = 0;
@@ -171,14 +194,33 @@ static void acados_daocp_equality_elimination_capacity(
     *pivot_capacity = 0;
 
     for (u32 stage = 0; stage <= (u32) dims->N; stage++)
-        remaining_equalities += acados_daocp_num_equalities_at_stage(dims, stage);
+        remaining_equalities += acados_daocp_num_equality_capacity_at_stage(dims, stage);
 
     for (u32 stage = 0; stage < (u32) dims->N; stage++)
     {
         acados_size_t rank = DAOCP_MIN((acados_size_t) dims->nu[stage], remaining_equalities);
         *pivot_capacity += rank;
         *alpha_capacity += acados_daocp_num_elimination_alphas(remaining_equalities, rank);
-        remaining_equalities -= acados_daocp_num_equalities_at_stage(dims, stage);
+        remaining_equalities -= acados_daocp_num_equality_capacity_at_stage(dims, stage);
+    }
+}
+
+static void acados_daocp_equality_elimination_runtime_capacity(
+    const daocp_dims* dims, acados_size_t* alpha_capacity, acados_size_t* pivot_capacity)
+{
+    acados_size_t remaining_equalities = 0;
+    *alpha_capacity = 0;
+    *pivot_capacity = 0;
+
+    for (u32 stage = 0; stage <= dims->N; stage++)
+        remaining_equalities += dims->ne[stage];
+
+    for (u32 stage = 0; stage < dims->N; stage++)
+    {
+        acados_size_t rank = DAOCP_MIN((acados_size_t) dims->nu[stage], remaining_equalities);
+        *pivot_capacity += rank;
+        *alpha_capacity += acados_daocp_num_elimination_alphas(remaining_equalities, rank);
+        remaining_equalities -= dims->ne[stage];
     }
 }
 
@@ -192,6 +234,7 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     int* nx = dims->nx;
     int* nu = dims->nu;
     int* nb = dims->nb;
+    int* nbu = dims->nbu;
     int* ng = dims->ng; 
     int* nge = dims->nge;
     int* nbue = dims->nbue;
@@ -199,23 +242,27 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
 
     // daocp_qp data
     size += (4*N + 3)*sizeof(u32); // dims.ng, dims.ne, dims.nbu, dims.nbx
+    size += (N+1)*sizeof(u32*); // detected_input_equalities[:]
+    size += (N+1)*sizeof(u32); // num_detected_input_equalities[:]
+    for (u32 t=0; t<=N; ++t)
+        size += (nbu[t]-nbue[t])*sizeof(u32); // detected input equality indices
     size += nx[0]*sizeof(f64); // x0
     u32 neq = 0;
     u32 nin = 0;
     u32 nb_tot = 0;
     for (u32 t=0; t<=N; ++t) {
-        u32 ne_t = nge[t]+nbue[t]+nbxe[t]*(t>0 ? 1 : 0);
+        u32 ne_capacity_t = nge[t]+nbu[t]+nbxe[t]*(t>0 ? 1 : 0);
         size += 2*(nb[t]-nbue[t]-nbxe[t])*sizeof(f64); // lbu/x[t], ubu/x[t]
         size += 2*(nb[t]-nbue[t]-nbxe[t])*sizeof(f64); // lbu/x_wrk[t], ubu/x_wrk[t]
         size += (nb[t]-nbue[t]-nbxe[t])*sizeof(u32); // idxbu[t]
         size += 2*(ng[t]-nge[t])*sizeof(f64); // lg[t], ug[t]
         size += 2*(ng[t]-nge[t])*sizeof(f64); // lg_wrk[t], ug_wrk[t]
-        size += ne_t*sizeof(f64); // d[t]
+        size += ne_capacity_t*sizeof(f64); // d[t]
         size += (ng[t]-nge[t])*(nu[t]+nx[t])*sizeof(f64); // Cu[t], Cx[t]
-        size += (t<N ? ne_t : 0)*nu[t]*sizeof(f64); // Du[t]
-        size += ne_t*nx[t]*sizeof(f64); // Dx[t]
+        size += (t<N ? ne_capacity_t : 0)*nu[t]*sizeof(f64); // Du[t]
+        size += ne_capacity_t*nx[t]*sizeof(f64); // Dx[t]
 
-        neq += ne_t;
+        neq += ne_capacity_t;
         nin += nb[t]+ng[t]-(nge[t]+nbue[t]+nbxe[t]);
         nb_tot += nb[t]-nbue[t]-nbxe[t];
     }
@@ -276,7 +323,7 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     // back to the original acados equality rows. These buffers are a tape:
     // they avoid allocations while recovering the dual solution.
     acados_size_t alpha_capacity, pivot_capacity;
-    acados_daocp_equality_elimination_capacity(dims, &alpha_capacity, &pivot_capacity);
+    acados_daocp_equality_elimination_max_capacity(dims, &alpha_capacity, &pivot_capacity);
     size += alpha_capacity*sizeof(f64);
     size += pivot_capacity*sizeof(u32);
 
@@ -345,6 +392,15 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     mem->qp.dims.ng = (u32*) (c_ptr += (N+1)*sizeof(u32));
     mem->qp.dims.ne = (u32*) (c_ptr += (N+1)*sizeof(u32));
     c_ptr += (N+1)*sizeof(u32);
+    mem->detected_input_equalities = (u32**) c_ptr;
+    c_ptr += (N+1)*sizeof(u32*);
+    mem->num_detected_input_equalities = (u32*) c_ptr;
+    c_ptr += (N+1)*sizeof(u32);
+    memset(mem->num_detected_input_equalities, 0, (N+1)*sizeof(u32));
+    for (u32 t=0; t<=N; ++t) {
+        mem->detected_input_equalities[t] = (u32*) c_ptr;
+        c_ptr += (nbu[t]-nbue[t])*sizeof(u32);
+    }
     align_char_to(8, &c_ptr);
     mem->qp.x0 = (f64*) c_ptr;
     mem->qp.lbu = (f64**) (c_ptr += nx[0]*sizeof(f64));
@@ -382,17 +438,24 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     c_ptr = assign_ptr_vec(wrk->lg_wrk, c_ptr, ng, nge, 0, sizeof(f64), N+1);
     c_ptr = assign_ptr_vec(mem->qp.cu, c_ptr, ng, nge, 0, sizeof(f64), N+1);
     c_ptr = assign_ptr_vec(wrk->ug_wrk, c_ptr, ng, nge, 0, sizeof(f64), N+1);
-    mem->qp.d[0] = (f64*) c_ptr; c_ptr += (nbue[0]+nge[0])*sizeof(f64);
+    mem->qp.d[0] = (f64*) c_ptr; c_ptr += (nbu[0]+nge[0])*sizeof(f64);
     for (u32 t=1; t<=N; ++t) {
         mem->qp.d[t] = (f64*) c_ptr;
-        c_ptr += (nbue[t]+nbxe[t]+nge[t])*sizeof(f64);
+        c_ptr += (nbu[t]+nbxe[t]+nge[t])*sizeof(f64);
     }
     c_ptr = assign_ptr_mat(mem->qp.Cu, c_ptr, ng, nge, 0, 0, nu, sizeof(f64), N);
     mem->qp.Cx[0]=0; c_ptr = assign_ptr_mat(mem->qp.Cx+1, c_ptr, ng+1, nge+1, 0, 0, nx+1, sizeof(f64), N);
-    mem->qp.Du[0] = (f64*) c_ptr; c_ptr += (nge[0]+nbue[0])*nu[0]*sizeof(f64);
-    c_ptr = assign_ptr_mat(mem->qp.Du+1, c_ptr, nge+1, 0, nbue+1, nbxe+1, nu+1, sizeof(f64), N-1);
-    mem->qp.Dx[0]= (f64*) c_ptr; c_ptr += (nge[0]+nbue[0])*nx[0]*sizeof(f64);
-    c_ptr = assign_ptr_mat(mem->qp.Dx+1, c_ptr, nge+1, 0, nbue+1, nbxe+1, nx+1, sizeof(f64), N);
+    mem->qp.Du[0] = (f64*) c_ptr; c_ptr += (nge[0]+nbu[0])*nu[0]*sizeof(f64);
+    for (u32 t=1; t<N; ++t) {
+        mem->qp.Du[t] = (f64*) c_ptr;
+        c_ptr += (nge[t]+nbu[t]+nbxe[t])*nu[t]*sizeof(f64);
+    }
+    mem->qp.Du[N] = (f64*) c_ptr;
+    mem->qp.Dx[0]= (f64*) c_ptr; c_ptr += (nge[0]+nbu[0])*nx[0]*sizeof(f64);
+    for (u32 t=1; t<=N; ++t) {
+        mem->qp.Dx[t] = (f64*) c_ptr;
+        c_ptr += (nge[t]+nbu[t]+nbxe[t])*nx[t]*sizeof(f64);
+    }
 
     // daocp_workspace data
     int max_nx = 0; int max_nu = 0; int neq = 0; int nin = 0; int tot_nu = 0;
@@ -401,7 +464,7 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
         if (nu[t] > max_nu) max_nu = nu[t];
         tot_nu += nu[t];
     }
-    for (u32 t=0; t<=N; ++t) neq += nge[t] + nbue[t] + nbxe[t];
+    for (u32 t=0; t<=N; ++t) neq += nge[t] + nbu[t] + nbxe[t];
     neq -= nbxe[0];
     for (u32 t=0; t<=N; ++t) nin += ng[t]+nb[t]-nge[t]-nbue[t]-nbxe[t];
 
@@ -486,7 +549,7 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     c_ptr += blasfeo_memsize_dvec(max_nx_nu);
 
     acados_size_t alpha_capacity, pivot_capacity;
-    acados_daocp_equality_elimination_capacity(dims, &alpha_capacity, &pivot_capacity);
+    acados_daocp_equality_elimination_max_capacity(dims, &alpha_capacity, &pivot_capacity);
     mem->equality_elimination_alphas = (f64*) c_ptr;
     c_ptr += alpha_capacity*sizeof(f64);
     mem->equality_elimination_pivots = (u32*) c_ptr;
@@ -553,20 +616,81 @@ static u32 acados_daocp_contains_index(const int *indices, int offset, int count
     return 0;
 }
 
-static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim, daocp_qp* qp_native, daocp_workspace* wrk) {
+static u32 acados_daocp_is_detected_input_equality(
+    const ocp_qp_daocp_memory* mem, u32 stage, u32 bound_index)
+{
+    for (u32 i=0; i<mem->num_detected_input_equalities[stage]; ++i)
+        if (mem->detected_input_equalities[stage][i] == bound_index)
+            return 1;
+    return 0;
+}
+
+static u32 acados_daocp_is_input_equality(
+    const ocp_qp_in* qp_in, const ocp_qp_daocp_memory* mem,
+    u32 stage, u32 bound_index)
+{
+    return acados_daocp_contains_index(
+               qp_in->idxe[stage], 0, qp_in->dim->nbue[stage], (int) bound_index)
+        || acados_daocp_is_detected_input_equality(mem, stage, bound_index);
+}
+
+static u32 acados_daocp_detect_input_bound_equalities(
+    const ocp_qp_in* qp_in, const ocp_qp_daocp_opts* opts,
+    ocp_qp_daocp_memory* mem)
+{
+    const ocp_qp_dims* dims = qp_in->dim;
+    u32 pattern_changed = 0;
+
+    for (u32 stage=0; stage<=(u32) dims->N; ++stage)
+    {
+        u32 old_count = mem->num_detected_input_equalities[stage];
+        u32 detected_count = 0;
+        if (opts->detect_input_bound_equalities)
+        {
+            for (u32 i=0; i<(u32) dims->nbu[stage]; ++i)
+            {
+                if (acados_daocp_contains_index(
+                        qp_in->idxe[stage], 0, dims->nbue[stage], (int) i))
+                    continue;
+                f64 lower = BLASFEO_DVECEL(qp_in->d+stage, i);
+                f64 upper = -BLASFEO_DVECEL(
+                    qp_in->d+stage, dims->ng[stage]+dims->nb[stage]+i);
+                if (DAOCP_ABS(upper-lower) <= opts->equality_detection_tolerance)
+                {
+                    if (detected_count >= old_count
+                        || mem->detected_input_equalities[stage][detected_count] != i)
+                        pattern_changed = 1;
+                    mem->detected_input_equalities[stage][detected_count++] = i;
+                }
+            }
+        }
+
+        if (detected_count != old_count)
+            pattern_changed = 1;
+
+        mem->num_detected_input_equalities[stage] = detected_count;
+    }
+    return pattern_changed;
+}
+
+static void acados_daocp_process_constraints(
+    ocp_qp_in* qp_in, ocp_qp_dims* dim, daocp_qp* qp_native,
+    daocp_workspace* wrk, ocp_qp_daocp_memory* mem) {
     // Dimensions
     u32 N = qp_native->dims.N = (u32) qp_in->dim->N;
     qp_native->dims.nx = (u32*) dim->nx;
     qp_native->dims.nu = (u32*) dim->nu;
     for (u32 t=0; t<N; ++t)
-        qp_native->dims.nbu[t] = dim->nbu[t] - dim->nbue[t];
+        qp_native->dims.nbu[t] = dim->nbu[t] - dim->nbue[t]
+            - mem->num_detected_input_equalities[t];
     qp_native->dims.nbu[N] = 0;
     qp_native->dims.nbx[0] = 0;
     for (u32 t=1; t<=N; ++t)
         qp_native->dims.nbx[t] = dim->nbx[t] - qp_in->dim->nbxe[t];
     for (u32 t=0; t<=N; ++t) {
         qp_native->dims.ng[t] = dim->ng[t] - dim->nge[t];
-        qp_native->dims.ne[t] = dim->nge[t] + dim->nbue[t] + dim->nbxe[t];
+        qp_native->dims.ne[t] = dim->nge[t] + dim->nbue[t] + dim->nbxe[t]
+            + mem->num_detected_input_equalities[t];
     }
     qp_native->dims.ne[0] -= dim->nbxe[0];
 
@@ -583,7 +707,7 @@ static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim,
         f64* ubu = qp_native->ubu[t];
         u32* idxb = qp_native->idxbu[t];
         for (u32 i=0; i<dim->nbu[t]; ++i) {
-            if (acados_daocp_contains_index(qp_in->idxe[t], 0, dim->nbue[t], i))
+            if (acados_daocp_is_input_equality(qp_in, mem, t, i))
                 continue;
             *(lbu++) = BLASFEO_DVECEL(qp_in->d+t, i);
             *(ubu++) = -BLASFEO_DVECEL(qp_in->d+t, dim->ng[t]+dim->nb[t]+i);
@@ -678,10 +802,21 @@ static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim,
             memset(Dx + i*dim->nx[t], 0, dim->nx[t]*sizeof(f64));
             Du[i*dim->nu[t] + uidx] = 1.0;
         }
+        // Automatically detected zero-width input bounds.
+        for (u32 i=0; i<mem->num_detected_input_equalities[t]; ++i) {
+            u32 offset = dim->nbue[t] + i;
+            u32 bound_index = mem->detected_input_equalities[t][i];
+            u32 uidx = qp_in->idxb[t][bound_index];
+            d[offset] = BLASFEO_DVECEL(qp_in->d+t, bound_index);
+            if (dim->nu[t] > 0)
+                memset(Du + offset*dim->nu[t], 0, dim->nu[t]*sizeof(f64));
+            memset(Dx + offset*dim->nx[t], 0, dim->nx[t]*sizeof(f64));
+            Du[offset*dim->nu[t] + uidx] = 1.0;
+        }
         // State bound equalities
         if (t!=0) {
             for (u32 i=0; i<dim->nbxe[t]; ++i) {
-                u32 offset = dim->nbue[t] + i;
+                u32 offset = dim->nbue[t] + mem->num_detected_input_equalities[t] + i;
                 int bound_index = qp_in->idxe[t][dim->nbue[t]+i];
                 u32 xidx = qp_in->idxb[t][bound_index] - dim->nu[t];
                 d[offset] = BLASFEO_DVECEL(qp_in->d+t, bound_index);
@@ -693,7 +828,8 @@ static void acados_daocp_process_constraints(ocp_qp_in* qp_in, ocp_qp_dims* dim,
         }
         // General equalities
         for (u32 i=0; i<dim->nge[t]; ++i) {
-            u32 offset = dim->nbue[t] + (t > 0 ? dim->nbxe[t] : 0) + i;
+            u32 offset = dim->nbue[t] + mem->num_detected_input_equalities[t]
+                + (t > 0 ? dim->nbxe[t] : 0) + i;
             int constraint_index = qp_in->idxe[t][dim->nbue[t]+dim->nbxe[t]+i];
             int general_index = constraint_index - dim->nb[t];
             d[offset] = BLASFEO_DVECEL(qp_in->d+t, constraint_index);
@@ -726,7 +862,8 @@ static void acados_daocp_init_workspace(daocp_workspace* wrk) {
 }
 
 static u32 acados_daocp_original_inequality_index(
-    const ocp_qp_in* qp_in, u32 stage, const daocp_constraint* constraint)
+    const ocp_qp_in* qp_in, const ocp_qp_daocp_memory* mem,
+    u32 stage, const daocp_constraint* constraint)
 {
     const ocp_qp_dims* dims = qp_in->dim;
     int first_index;
@@ -760,7 +897,9 @@ static u32 acados_daocp_original_inequality_index(
     for (int i = 0; i < count; i++)
     {
         int original_index = first_index + i;
-        if (acados_daocp_contains_index(
+        if (constraint->type == DAOCP_BOUND_U
+            ? acados_daocp_is_input_equality(qp_in, mem, stage, (u32) i)
+            : acados_daocp_contains_index(
                 qp_in->idxe[stage], equality_offset, equality_count, original_index))
             continue;
         if (filtered_index == constraint->idx)
@@ -773,7 +912,8 @@ static u32 acados_daocp_original_inequality_index(
 }
 
 static u32 acados_daocp_original_equality_index(
-    const ocp_qp_in* qp_in, u32 stage, u32 equality_row)
+    const ocp_qp_in* qp_in, const ocp_qp_daocp_memory* mem,
+    u32 stage, u32 equality_row)
 {
     const ocp_qp_dims* dims = qp_in->dim;
 
@@ -781,6 +921,10 @@ static u32 acados_daocp_original_equality_index(
         return (u32) qp_in->idxe[stage][equality_row];
 
     equality_row -= dims->nbue[stage];
+    if (equality_row < mem->num_detected_input_equalities[stage])
+        return mem->detected_input_equalities[stage][equality_row];
+
+    equality_row -= mem->num_detected_input_equalities[stage];
     if (stage > 0 && equality_row < (u32) dims->nbxe[stage])
         return (u32) qp_in->idxe[stage][dims->nbue[stage] + equality_row];
 
@@ -860,7 +1004,8 @@ static void acados_daocp_record_equality_elimination(
     f64* ABtmp = wrk->ABtmp;
 
     acados_size_t alpha_capacity, pivot_capacity;
-    acados_daocp_equality_elimination_capacity(dims, &alpha_capacity, &pivot_capacity);
+    acados_daocp_equality_elimination_runtime_capacity(
+        &qp_native->dims, &alpha_capacity, &pivot_capacity);
     acados_size_t alpha_base = alpha_capacity;
     acados_size_t pivot_base = pivot_capacity;
     acados_size_t capacity_rows = ne[N];
@@ -968,7 +1113,7 @@ static void acados_daocp_recover_equality_duals(
 
         for (u32 row = 0; row < ne[stage]; row++)
         {
-            u32 constraint_index = acados_daocp_original_equality_index(qp_in, stage, row);
+            u32 constraint_index = acados_daocp_original_equality_index(qp_in, mem, stage, row);
             acados_daocp_store_signed_multiplier(
                 qp_out->lam + stage, dims->nb[stage] + dims->ng[stage],
                 constraint_index, dual[row]);
@@ -986,7 +1131,7 @@ static void acados_daocp_recover_equality_duals(
     assert(propagated_duals == ne[N]);
     for (u32 row = 0; row < ne[N]; row++)
     {
-        u32 constraint_index = acados_daocp_original_equality_index(qp_in, N, row);
+        u32 constraint_index = acados_daocp_original_equality_index(qp_in, mem, N, row);
         acados_daocp_store_signed_multiplier(
             qp_out->lam + N, dims->nb[N] + dims->ng[N],
             constraint_index, dual[row]);
@@ -1059,7 +1204,7 @@ static void acados_daocp_compute_dual_solution(
         const daocp_constraint* constraint = wrk->as.xi2con + i;
         u32 stage = constraint->t;
         u32 constraint_index = 
-            acados_daocp_original_inequality_index(qp_in, stage, constraint);
+            acados_daocp_original_inequality_index(qp_in, mem, stage, constraint);
         u32 nbg = dims->nb[stage] + dims->ng[stage];
         if (constraint->is_upper)
             BLASFEO_DVECEL(qp_out->lam + stage, nbg + constraint_index) =
@@ -1157,8 +1302,11 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
         blasfeo_drowin(dim->nu[t]+dim->nx[t], 1.0, qp_in->rqz+t, 0, qp_in->RSQrq+t, dim->nu[t]+dim->nx[t], 0);
     daocp_workspace* wrk = (daocp_workspace*) mem->workspace;
     wrk->dims = &qp_native->dims;
-    acados_daocp_process_constraints(qp_in, dim, qp_native, wrk);
-    if (opts->first_run || !opts->warm_start) acados_daocp_init_workspace(wrk);
+    u32 equality_pattern_changed =
+        acados_daocp_detect_input_bound_equalities(qp_in, opts, mem);
+    acados_daocp_process_constraints(qp_in, dim, qp_native, wrk, mem);
+    if (opts->first_run || !opts->warm_start || equality_pattern_changed)
+        acados_daocp_init_workspace(wrk);
     // Set solution pointers
     mem->sol.ux = qp_out->ux;
 
@@ -1196,7 +1344,8 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
         // Compute dual minimizer and check dual feasibility
         if (!need_reset) {
             daocp_solve_dual_eqcon_qp(wrk);
-            need_reset = !daocp_is_dual_feasible(wrk->p, wrk->xi_sign, wrk->as.n_active);
+            need_reset = !daocp_is_dual_feasible(
+                &opts->daocp_opts, wrk->p, wrk->xi_sign, wrk->as.n_active);
             // If the dual minimizer is feasible, we can keep the working set
             if (!need_reset) memcpy(wrk->xi, wrk->p, wrk->as.n_active*sizeof(f64));
         }
