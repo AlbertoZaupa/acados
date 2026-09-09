@@ -1341,14 +1341,6 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     if (!opts->first_run) {
         // Recompute cholesky of dual hessian, detecting singularity
         u32 need_reset = daocp_compute_chol_from_scratch(wrk, qp_native);
-        // Compute dual minimizer and check dual feasibility
-        if (!need_reset) {
-            daocp_solve_dual_eqcon_qp(wrk);
-            need_reset = !daocp_is_dual_feasible(
-                &opts->daocp_opts, wrk->p, wrk->xi_sign, wrk->as.n_active);
-            // If the dual minimizer is feasible, we can keep the working set
-            if (!need_reset) memcpy(wrk->xi, wrk->p, wrk->as.n_active*sizeof(f64));
-        }
         if (need_reset) daocp_reset_working_set(wrk);
     }
     daocp_solve(&opts->daocp_opts, qp_native, wrk, &mem->sol);
