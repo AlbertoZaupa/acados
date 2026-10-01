@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -47,7 +25,6 @@ typedef struct
     int nu;
     int nz;
     int np;
-    int ny;  // for NLS cost propagation
 
 } sim_irk_dims;
 
@@ -68,19 +45,13 @@ typedef struct
     // Jacobian of implicit ode w.r.t. p
     external_function_generic *impl_dae_jac_p;
 
-    // for cost propagation
-    external_function_generic *nls_y_fun_jac;  // evaluation nls function and jacobian
-    external_function_generic *nls_y_fun;  // evaluation nls function
-    external_function_generic *conl_cost_fun_jac_hess;
-    external_function_generic *conl_cost_fun;
-
 } irk_model;
 
 
 
 typedef struct
 {
-    struct blasfeo_dvec *rG;        // residuals of G (nx*ns)
+    struct blasfeo_dvec *rG;        // residuals of G ((nx+nz)*ns)
     struct blasfeo_dvec *K;         // internal K variables ((nx+nz)*ns)
     struct blasfeo_dvec *xt;        // temporary x
     struct blasfeo_dvec *xn;        // x at each integration step
@@ -145,18 +116,50 @@ typedef struct
     struct blasfeo_dmat tmp_dxkzu_dw0;  // size (2*nx + nu + nz) x (nx + nu)
 
     /* the following variables are only available if (opts->cost_propagation) */
-    struct blasfeo_dmat *J_y_tilde;
-    struct blasfeo_dmat *tmp_nux_ny;
-    struct blasfeo_dmat *tmp_nux_ny2;
     struct blasfeo_dmat *S_forw_stage;
-    struct blasfeo_dvec *tmp_ny;
-    struct blasfeo_dvec *nls_res;
-    // only for cost_propagation with CONVEX_OVER_NONLINEAR
-    struct blasfeo_dmat *W;
-    struct blasfeo_dmat *tmp_nv_ny;
-    struct blasfeo_dmat *Jt_z;
 
+    /* function argument vectors*/
+    ext_fun_arg_t impl_ode_type_in[5];
+    void *impl_ode_in[5];
 
+    ext_fun_arg_t impl_ode_fun_type_out[1];
+    void *impl_ode_fun_out[1];
+
+    ext_fun_arg_t impl_ode_fun_jac_x_xdot_z_type_out[4];
+    void *impl_ode_fun_jac_x_xdot_z_out[4];
+
+    ext_fun_arg_t impl_ode_jac_x_xdot_u_z_type_out[4];
+    void *impl_ode_jac_x_xdot_u_z_out[4];
+
+    ext_fun_arg_t impl_dae_jac_p_type_out[1];
+    void *impl_dae_jac_p_out[1];
+
+    ext_fun_arg_t impl_ode_hess_type_in[6];
+    void *impl_ode_hess_in[6];
+
+    ext_fun_arg_t impl_ode_hess_type_out[1];
+    void *impl_ode_hess_out[1];
+
+    struct blasfeo_dvec_args impl_ode_xdot_in;
+    struct blasfeo_dvec_args impl_ode_z_in;
+    struct blasfeo_dvec_args impl_ode_res_out;
+    struct blasfeo_dvec_args impl_ode_hess_lambda_in;
+
+    double t_current;
+
+    // Step pointers, populated during helper calls
+    struct blasfeo_dmat *dG_dK_ss;
+    struct blasfeo_dmat *dG_dxu_ss;
+    struct blasfeo_dmat *dK_dxu_ss;
+    struct blasfeo_dmat *S_forw_ss;
+    int *ipiv_ss;
+
+    /* timers */
+    acados_timer timer_ad;
+    acados_timer timer_la;
+
+    double timing_ad;
+    double timing_la;
 } sim_irk_workspace;
 
 
@@ -169,14 +172,7 @@ typedef struct
     double time_ad;
     double time_la;
 
-    double *cost_fun;
-    double *outer_hess_is_diag;
-    double *cost_scaling_ptr;
-
-    struct blasfeo_dmat *W_chol;  // cholesky factor of weight matrix
-    struct blasfeo_dvec *W_chol_diag;
-    struct blasfeo_dvec *y_ref;  // y_ref for NLS cost
-    struct blasfeo_dvec *cost_grad;
+    void *cost_capsule;  // pointer to ocp_nlp_cost_capsule of the cost module
     struct blasfeo_dmat *cost_hess;
 
     struct blasfeo_dmat *S_p;

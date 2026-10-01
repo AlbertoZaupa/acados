@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 import sys
 sys.path.insert(0, '../common')
@@ -120,7 +97,7 @@ def main(formulation='s_slack', plot_traj=True):
         ocp.constraints.ls = -ACADOS_INFTY * np.ones((ns, ))
         ocp.constraints.us = 0 * np.ones((ns, ))
         ocp.cost.zl = np.array([1.0])
-        ocp.cost.Zl = np.array([-0.0])
+        ocp.cost.Zl = np.array([0.0])
         ocp.cost.zu = np.array([1.0])
         ocp.cost.Zu = np.array([0.0])
 
@@ -143,9 +120,6 @@ def main(formulation='s_slack', plot_traj=True):
     ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
     ocp.solver_options.integrator_type = 'IRK'
     ocp.solver_options.nlp_solver_type = 'SQP'
-    # ocp.solver_options.print_level = 5
-    # ocp.solver_options.nlp_solver_max_iter = 2
-
 
     nx = model.x.rows()
     nu = model.u.rows()
@@ -162,29 +136,41 @@ def main(formulation='s_slack', plot_traj=True):
         raise Exception(f'acados returned status {status}.')
 
     # get solution
-    for i in range(N):
-        xtraj[i,:] = ocp_solver.get(i, "x")
-        utraj[i,:] = ocp_solver.get(i, "u")
-    xtraj[N,:] = ocp_solver.get(N, "x")
+    iterate = ocp_solver.get_iterate()
+    xtraj[:] = iterate.x
+    utraj[:] = iterate.u
 
     min_x_vals = np.minimum(xtraj[:, 0], xtraj[:, 3])
     if formulation == 'u_slack':
         slack_vals = utraj[:, 1]
-        assert np.allclose(min_x_vals[:-1], slack_vals, atol=1e-6)
+        np.testing.assert_allclose(min_x_vals[:-1], slack_vals, atol=1e-6)
     elif formulation == 'u_slack2':
         slack_vals = utraj[:, 1]
-        assert np.allclose(min_x_vals[:-1], -slack_vals, atol=1e-6)
+        np.testing.assert_allclose(min_x_vals[:-1], -slack_vals, atol=1e-6)
     elif formulation == 's_slack':
         slack_vals = np.zeros((N, ))
         unused_slack_vals = np.zeros((N, ))
         for i in range(N):
             slack_vals[i] = ocp_solver.get(i, "sl")[0]
             unused_slack_vals[i] = ocp_solver.get(i, "su")[0]
-        assert np.allclose(min_x_vals[:-1], -slack_vals, atol=1e-6)
+        np.testing.assert_allclose(min_x_vals[:-1], -slack_vals, atol=1e-6)
         print(f"{unused_slack_vals=}")
         # plot slacks
         utraj = np.append(utraj, np.atleast_2d(slack_vals).transpose(), axis=1)
         model.u_labels.append('slack')
+
+        slack_cost = ocp_solver.get_cost(per_stage=False, slacks_cost_only=True)
+        slack_cost_per_stage = ocp_solver.get_cost(per_stage=True, slacks_cost_only=True)
+
+        assert np.sum(slack_cost_per_stage) == slack_cost
+
+        iterate = ocp_solver.get_iterate().flatten()
+        # only l1 penalty wit weight 1, so summed and scaled violation equals the slack cost
+        # no slack at terminal stage
+        violation = iterate.sl + iterate.su
+
+        slack_cost_from_slacks = ocp_solver.ocp.solver_options.cost_scaling[:-1] * violation
+        assert np.allclose(slack_cost_from_slacks, slack_cost_per_stage[:-1])
 
     if plot_traj:
         plot_trajectories(

@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -878,7 +856,7 @@ static void set_pointers_for_hessian_evaluation(ocp_nlp_config *config,
     int dyn_compute_hess;
     for (int i = 0; i < N; i++)
     {
-        config->dynamics[i]->memory_set_RSQrq_ptr(mem->RSQ_constr+i, nlp_mem->dynamics[i]);
+        config->dynamics[i]->memory_set(config->dynamics[i], dims->dynamics[i], nlp_mem->dynamics[i], "RSQrq_ptr", mem->RSQ_constr+i);
         // dynamics always write into hess directly, if hess is computed
         config->dynamics[i]->opts_get(config->dynamics[i], opts->dynamics[i], "compute_hess", &dyn_compute_hess);
         if (!dyn_compute_hess)
@@ -892,11 +870,11 @@ static void set_pointers_for_hessian_evaluation(ocp_nlp_config *config,
     for (int i = 0; i <= N; i++)
     {
         config->cost[i]->opts_set(config->cost[i], opts->cost[i], "add_hess_contribution", &add_cost_hess_contribution);
-        config->cost[i]->memory_set_RSQrq_ptr(mem->RSQ_cost+i, nlp_mem->cost[i]);
+        config->cost[i]->memory_set(config->cost[i], dims->cost[i], nlp_mem->cost[i], "RSQrq_ptr", mem->RSQ_cost+i);
     }
     for (int i = 0; i <= N; i++)
     {
-        config->constraints[i]->memory_set_RSQrq_ptr(mem->RSQ_constr+i, nlp_mem->constraints[i]);
+        config->constraints[i]->memory_set(config->constraints[i], dims->constraints[i], nlp_mem->constraints[i], "RSQrq_ptr", mem->RSQ_constr+i);
     }
     return;
 }
@@ -998,7 +976,7 @@ static int prepare_and_solve_QP(ocp_nlp_config* config, ocp_nlp_sqp_wfqp_opts* o
     }
 
     // Show input to QP
-    if (nlp_opts->print_level > 3)
+    if (nlp_opts->print_level > 3 + nlp_mem->iter)
     {
         printf("\n\nSQP: ocp_qp_in at iteration %d\n", nlp_mem->iter);
         print_ocp_qp_dims(qp_in->dim);
@@ -1040,7 +1018,7 @@ static int prepare_and_solve_QP(ocp_nlp_config* config, ocp_nlp_sqp_wfqp_opts* o
         qp_solver->opts_set(qp_solver, nlp_opts->qp_solver_opts, "warm_start", &nlp_opts->qp_warm_start);
     }
 
-    if (nlp_opts->print_level > 3)
+    if (nlp_opts->print_level > 3 + nlp_mem->iter)
     {
         printf("\n\nSQP: ocp_qp_out at iteration %d\n", nlp_mem->iter);
         print_ocp_qp_dims(qp_out->dim);
@@ -1054,7 +1032,7 @@ static int prepare_and_solve_QP(ocp_nlp_config* config, ocp_nlp_sqp_wfqp_opts* o
     // exit conditions on QP status
     if (qp_status!=ACADOS_SUCCESS)
     {
-        if (nlp_opts->print_level > 3)
+        if (nlp_opts->print_level > 3 + nlp_mem->iter)
         {
             printf("\n Failed to solve the following QP:\n");
             if (nlp_opts->print_level)
@@ -1964,7 +1942,7 @@ int ocp_nlp_sqp_wfqp_precompute(void *config_, void *dims_, void *nlp_in_, void 
     // overwrite output pointers normally set in ocp_nlp_alias_memory_to_submodules
     for (int stage = 0; stage <= dims->N; stage++)
     {
-        config->cost[stage]->memory_set_Z_ptr(mem->Z_cost_module+stage, nlp_mem->cost[stage]);
+        config->cost[stage]->memory_set(config->cost[stage], dims->cost[stage], nlp_mem->cost[stage], "Z_ptr", mem->Z_cost_module+stage);
     }
 
     return ACADOS_SUCCESS;

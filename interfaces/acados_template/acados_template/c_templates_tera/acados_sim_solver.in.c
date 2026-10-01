@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 {%- if solver_options.hessian_approx %}
@@ -334,6 +312,8 @@ int {{ name }}_acados_sim_create({{ name }}_sim_solver_capsule * capsule)
     sim_opts_set({{ name }}_sim_config, {{ name }}_sim_opts, "num_stages", &tmp_int);
     tmp_int = {{ solver_options.sim_method_num_steps }};
     sim_opts_set({{ name }}_sim_config, {{ name }}_sim_opts, "num_steps", &tmp_int);
+    tmp_bool = {{ solver_options.sim_method_jac_reuse }};
+    sim_opts_set({{ name }}_sim_config, {{ name }}_sim_opts, "jac_reuse", &tmp_bool);
 
     // options that are not available to AcadosOcpSolver
     //  (in OCP they will be determined by other options, like exact_hessian)
@@ -373,7 +353,7 @@ int {{ name }}_acados_sim_create({{ name }}_sim_solver_capsule * capsule)
     {{ name }}_sim_config->model_set({{ name }}_sim_in->model,
                  "impl_ode_fun", capsule->sim_impl_dae_fun);
     {{ name }}_sim_config->model_set({{ name }}_sim_in->model,
-                 "impl_ode_fun_jac_x_xdot", capsule->sim_impl_dae_fun_jac_x_xdot_z);
+                 "impl_ode_fun_jac_x_xdot_z", capsule->sim_impl_dae_fun_jac_x_xdot_z);
     {{ name }}_sim_config->model_set({{ name }}_sim_in->model,
                  "impl_ode_jac_x_xdot_u", capsule->sim_impl_dae_jac_x_xdot_u_z);
     {% if code_gen_options.sens_forw_p %}

@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 from typing import Union, Tuple, List
 import inspect, warnings
@@ -65,6 +42,7 @@ class AcadosModel():
         ## dynamics
         self.__f_impl_expr = []
         self.__f_expl_expr = []
+        self.__f_expl_expr_with_cost = []
 
         self.__disc_dyn_expr = []
         self.__disc_dyn_custom_jac_ux_expr = []
@@ -144,6 +122,8 @@ class AcadosModel():
 
     @name.setter
     def name(self, name):
+        if not isinstance(name, str):
+            raise TypeError(f"AcadosModel.name should be str, got {type(name)}.")
         self.__name = name
 
     @property
@@ -271,6 +251,21 @@ class AcadosModel():
     @f_expl_expr.setter
     def f_expl_expr(self, f_expl_expr):
         self.__f_expl_expr = f_expl_expr
+
+
+    @property
+    def f_expl_expr_with_cost(self):
+        r"""
+        CasADi expression for explicit dynamics augmented with cost_state :math:`[\dot{x}, \dot{c}] = f_\text{expl, wc}(x, u, p)`.
+        Used if :py:attr:`acados_template.acados_ocp_options.AcadosOcpOptions.integrator_type` == 'ERK_WITH_COST'.
+        Default: :code:`[]`
+        """
+        return self.__f_expl_expr_with_cost
+
+    @f_expl_expr_with_cost.setter
+    def f_expl_expr_with_cost(self, f_expl_expr_with_cost):
+        self.__f_expl_expr_with_cost = f_expl_expr_with_cost
+
 
     @property
     def disc_dyn_expr(self):
@@ -876,6 +871,9 @@ class AcadosModel():
 
     def make_consistent(self, dims: Union[AcadosOcpDims, AcadosSimDims]) -> None:
 
+        if self.name is None:
+            raise ValueError("Please set AcadosModel.name, got None.")
+
         casadi_symbol = self.get_casadi_symbol()
 
         # nx
@@ -949,6 +947,9 @@ class AcadosModel():
             if casadi_length(self.f_expl_expr) != dims.nx:
                 raise ValueError(f"model.f_expl_expr must have length nx = {dims.nx}, got {casadi_length(self.f_expl_expr)}")
 
+        if not is_empty(self.f_expl_expr_with_cost):
+            if casadi_length(self.f_expl_expr_with_cost) != dims.nx + 1:
+                raise ValueError(f"model.f_expl_expr_with_cost must have length nx+1 = {dims.nx+1}, got {casadi_length(self.f_expl_expr_with_cost)}")
         return
 
 

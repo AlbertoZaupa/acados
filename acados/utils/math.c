@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -1094,14 +1072,19 @@ static void tql2(int dim, double *V, double *d, double *e)
 }
 
 
-
 void acados_eigen_decomposition(int dim, double *A, double *V, double *d, double *e)
 {
     int i, j;
+    double aij;
 
+    // copy lower triangular of A into lower and upper of V
     for (i=0; i<dim; i++)
-        for (j=0; j<dim; j++)
-            V[i*dim+j] = A[i*dim+j];
+        for (j=0; j<=i; j++)
+        {
+            aij = A[j*dim+i];
+            V[i*dim+j] = aij;
+            V[j*dim+i] = aij;
+        }
 
     tred2(dim, V, d, e);
     tql2(dim, V, d, e);
@@ -1119,9 +1102,14 @@ void compute_gershgorin_max_abs_eig_estimate(int n, struct blasfeo_dmat *A, doub
         r_i = 0.0;
         for (int jj = 0; jj < n; jj++)
         {
-            if (jj != ii)
+            if (ii > jj)
             {
                 r_i += fabs(BLASFEO_DMATEL(A, ii, jj));
+            }
+            else if (ii < jj)
+            {
+                // read from lower triangular
+                r_i += fabs(BLASFEO_DMATEL(A, jj, ii));
             }
         }
         a = BLASFEO_DMATEL(A, ii, ii);
@@ -1142,9 +1130,14 @@ void compute_gershgorin_min_eig_estimate(int n, struct blasfeo_dmat *A, double *
         r_i = 0.0;
         for (int jj = 0; jj < n; jj++)
         {
-            if (jj != ii)
+            if (ii > jj)
             {
                 r_i += fabs(BLASFEO_DMATEL(A, ii, jj));
+            }
+            else if (ii < jj)
+            {
+                // read from lower triangular
+                r_i += fabs(BLASFEO_DMATEL(A, jj, ii));
             }
         }
         a = BLASFEO_DMATEL(A, ii, ii);

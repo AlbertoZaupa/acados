@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 import sys
 sys.path.insert(0, '../common')
 
@@ -120,8 +97,8 @@ def main():
     cd_optimal_value_grad = (optimal_value_fun[2:] - optimal_value_fun[:-2]) / (thetas[2:] - thetas[:-2])
     cd_optimal_value_hess = (optimal_value_grad[2:] - optimal_value_grad[:-2]) / (thetas[2:] - thetas[:-2])
 
-    assert np.allclose(optimal_value_grad[1:-1], cd_optimal_value_grad, rtol=1e-2, atol=1e-2)
-    assert np.allclose(optimal_value_hess[1:-1], cd_optimal_value_hess, rtol=1, atol=1e-1)
+    np.testing.assert_allclose(optimal_value_grad[1:-1], cd_optimal_value_grad, rtol=1e-2, atol=1e-2)
+    np.testing.assert_allclose(optimal_value_hess[1:-1], cd_optimal_value_hess, rtol=1, atol=1e-1)
 
     # state-action value function gradient (aka Q-function)
     u = ocp_solver.get(0, 'u').item()
@@ -144,8 +121,8 @@ def main():
     cd_Q_grad = (Q_fun[2:] - Q_fun[:-2]) / (us[2:] - us[:-2])
     cd_Q_hess = (Q_grad[2:] - Q_grad[:-2]) / (us[2:] - us[:-2])
 
-    assert np.allclose(Q_grad[1:-1], cd_Q_grad, rtol=1e-2, atol=1e-2)
-    # assert np.allclose(Q_hess[1:-1], cd_Q_hess, rtol=1e-2, atol=1e-2)
+    np.testing.assert_allclose(Q_grad[1:-1], cd_Q_grad, rtol=1e-2, atol=1e-2)
+    # np.testing.assert_allclose(Q_hess[1:-1], cd_Q_hess, rtol=1e-2, atol=1e-2)
 
     _, axes = plt.subplots(nrows=3, ncols=2, figsize=(7, 8), sharex='col')
 

@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 import numpy as np
 import casadi as ca
@@ -163,9 +140,10 @@ def main_multiphase_ocp():
     u_traj_phases = n_phases*[None]
     t_grid_phases = n_phases*[None]
 
+    iterate = acados_ocp_solver.get_iterate()
     for i_phase in range(n_phases):
-        x_traj_phases[i_phase] = [acados_ocp_solver.get(i, 'x') for i in range(ocp.start_idx[i_phase], ocp.end_idx[i_phase]+1)]
-        u_traj_phases[i_phase] = [acados_ocp_solver.get(i, 'u') for i in range(ocp.start_idx[i_phase], ocp.end_idx[i_phase])]
+        x_traj_phases[i_phase] = iterate.x[ocp.start_idx[i_phase]:ocp.end_idx[i_phase]+1]
+        u_traj_phases[i_phase] = iterate.u[ocp.start_idx[i_phase]:ocp.end_idx[i_phase]]
         t_grid_phases[i_phase] = ocp.solver_options.shooting_nodes[ocp.start_idx[i_phase]: ocp.end_idx[i_phase]+1]
         print(f"Phase {i_phase}:\nt grid \n {t_grid_phases[i_phase]} \nx traj\n {x_traj_phases[i_phase]} \nu traj {u_traj_phases[i_phase]}")
         print("-----------------------------------")

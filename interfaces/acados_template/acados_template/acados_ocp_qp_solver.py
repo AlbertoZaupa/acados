@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 import os
 from typing import Optional, Union
@@ -449,6 +426,7 @@ class AcadosOcpQpSolver:
         17: lin res eq
         18: lin res ineq
         19: lin res comp
+        20: singular
         """
         int_fields = ['iter']
         double_fields = ['tau_iter', 'time_qp_solver_call', 'time_qp_xcond', 'time_tot']
@@ -466,8 +444,12 @@ class AcadosOcpQpSolver:
             if 'HPIPM' not in self.qp_solver_name:
                 raise NotImplementedError("statistics is only implemented for HPIPM solver for now.")
             iter_qp = self.get_stats('iter')
-            stat_m = 20 # ad-hoc hard code for metric number
-            out = np.zeros((iter_qp+1, stat_m), dtype=np.float64, order="C")
+
+            stat_m = c_int()
+            stat_m_data = byref(stat_m)
+            self.__acados_lib.ocp_qp_xcond_solver_get_scalar(self.c_solver, self.c_out, "stat_m".encode('utf-8'), cast(stat_m_data, c_void_p))
+
+            out = np.zeros((iter_qp+1, stat_m.value), dtype=np.float64, order="C")
             out_data = cast(out.ctypes.data, POINTER(c_double))
             self.__acados_lib.ocp_qp_solver_get_stats(self.c_solver, out_data, self.qp_solver_name.encode('utf-8'))
 

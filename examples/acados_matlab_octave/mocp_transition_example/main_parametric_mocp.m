@@ -3,29 +3,7 @@
 %
 % This file is part of acados.
 %
-% The 2-Clause BSD License
-%
-% Redistribution and use in source and binary forms, with or without
-% modification, are permitted provided that the following conditions are met:
-%
-% 1. Redistributions of source code must retain the above copyright notice,
-% this list of conditions and the following disclaimer.
-%
-% 2. Redistributions in binary form must reproduce the above copyright notice,
-% this list of conditions and the following disclaimer in the documentation
-% and/or other materials provided with the distribution.
-%
-% THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-% AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-% IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-% ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-% LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-% CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-% SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-% INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-% CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-% ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-% POSSIBILITY OF SUCH DAMAGE.;
+% Licensed under the 2-Clause BSD License.
 
 
 % NOTE: this example is the same as main_multiphase_ocp.m but with parameters that do not change the solution.
@@ -62,7 +40,7 @@ phase_2.cost.W = diag([settings.L2_COST_P, 1e-1 * settings.L2_COST_V]);
 phase_2.cost.yref = zeros(2, 1);
 ocp.set_phase(phase_2, 2);
 
-phase_3 = formulate_single_integrator_ocp(settings);
+phase_3 = formulate_single_integrator_ocp(settings, 1, 'EXTERNAL');
 % add parameters to phase_3
 np_phase_3 = 42;
 phase_3.model.p = SX.sym('dummy_parameter_3', np_phase_3);
@@ -71,6 +49,9 @@ ocp.set_phase(phase_3, 3);
 
 % set mocp specific options
 ocp.mocp_opts.integrator_type = {'ERK', 'DISCRETE', 'ERK'};
+ocp.mocp_opts.cost_discretization = {'EULER', 'EULER', 'INTEGRATOR'};
+ocp.solver_options.hessian_approx = 'EXACT';
+
 
 % set solver options, common for AcadosOcp and AcadosMultiphaseOcp
 ocp.solver_options.nlp_solver_type = 'SQP';
@@ -83,6 +64,8 @@ ocp.solver_options.time_steps = [T_HORIZON_1 / N_list(1) * ones(1, N_list(1)), .
 
 ocp.solver_options.store_iterates = true;
 ocp.code_gen_options.ext_fun_compile_flags = '';
+
+ocp.name = 'parametric_mocp';
 
 ocp_solver = AcadosOcpSolver(ocp);
 

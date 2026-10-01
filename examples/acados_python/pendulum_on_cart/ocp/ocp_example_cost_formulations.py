@@ -3,41 +3,34 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
+from pathlib import Path
 import sys
-sys.path.insert(0, '../common')
+import importlib.util
+
+# Add paths relative to this script's location
+script_dir = Path(__file__).resolve().parent
+common_dir = script_dir / '../common'
+chain_mass_dir = script_dir / '../../chain_mass'
+
+# Import common utils explicitly
+common_utils_path = common_dir / 'utils.py'
+spec = importlib.util.spec_from_file_location("common_utils", common_utils_path)
+common_utils = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(common_utils)
+plot_pendulum = common_utils.plot_pendulum
+
+# Add directories to path for other imports
+sys.path.insert(0, str(common_dir))
+sys.path.insert(0, str(chain_mass_dir))
 
 from acados_template import AcadosOcp, AcadosOcpSolver, AcadosMultiphaseOcp
 from pendulum_model import export_pendulum_ode_model, export_augmented_pendulum_model
 import numpy as np
 import scipy.linalg
-from utils import plot_pendulum
 import casadi as ca
-from casadi.tools import entry, struct_symSX
+from param_utils import ParamLayout, ParamVector
 
 COST_VERSIONS = ['LS', 'EXTERNAL', 'EXTERNAL_Z', 'NLS', 'NLS_TO_EXTERNAL', 'NLS_Z', 'LS_Z', 'CONL', 'CONL_Z', 'AUTO']
 HESSIAN_APPROXIMATION = 'GAUSS_NEWTON' # 'GAUSS_NEWTON
@@ -203,12 +196,14 @@ def formulate_ocp(cost_version: str, constraint_version="bu") -> AcadosOcp:
         ocp.cost.cost_type = 'NONLINEAR_LS'
         ocp.cost.cost_type_e = 'NONLINEAR_LS'
 
-        p_global = struct_symSX([
-            entry('W', shape=(ny, ny)),
-            entry('yref', shape=(ny, )),
-            entry('W_e', shape=(ny_e, ny_e)),
-            entry('yref_e', shape=(ny_e, ))
+        p_global_layout = ParamLayout([
+            {'name': 'W', 'shape': (ny, ny)},
+            {'name': 'yref', 'shape': (ny, )},
+            {'name': 'W_e', 'shape': (ny_e, ny_e)},
+            {'name': 'yref_e', 'shape': (ny_e, )}
         ])
+        p_global_sym = ca.SX.sym('p_global', p_global_layout.size, 1)
+        p_global = ParamVector(p_global_layout, p_global_sym)
         ocp.model.p_global = p_global.cat
 
         ocp.cost.W = p_global['W']
@@ -221,13 +216,13 @@ def formulate_ocp(cost_version: str, constraint_version="bu") -> AcadosOcp:
 
         ocp.translate_cost_to_external_cost(cost_hessian='GAUSS_NEWTON')
 
-        p_global_values = p_global(0)
+        p_global_values = ParamVector(p_global_layout, np.zeros((p_global_layout.size, 1)))
         p_global_values['W'] = cost_W
         p_global_values['yref'] = np.zeros((ny, ))
         p_global_values['W_e'] = Q_mat
         p_global_values['yref_e'] = np.zeros((ny_e, ))
 
-        ocp.p_global_values = p_global_values.cat.full().flatten()
+        ocp.p_global_values = p_global_values.cat.flatten()
     else:
         raise Exception('Unknown cost_version.')
 
@@ -331,10 +326,9 @@ def main(cost_version: str, formulation_type='ocp', integrator_type='IRK', refor
         raise Exception(f'acados returned status {status}.')
 
     # get solution
-    for i in range(N):
-        simX[i,:] = ocp_solver.get(i, "x")
-        simU[i,:] = ocp_solver.get(i, "u")
-    simX[N,:] = ocp_solver.get(N, "x")
+    iterate = ocp_solver.get_iterate()
+    simX[:] = iterate.x
+    simU[:] = iterate.u
 
     cost_val = ocp_solver.get_cost()
 
@@ -354,19 +348,19 @@ def main(cost_version: str, formulation_type='ocp', integrator_type='IRK', refor
 
     if cost.cost_type in ['LINEAR_LS', 'NONLINEAR_LS', 'CONVEX_OVER_NONLINEAR']:
         yref_ = ocp_solver.cost_get(1, 'yref')
-        assert np.allclose(yref_, cost.yref)
+        np.testing.assert_allclose(yref_, cost.yref)
 
     if cost.cost_type in ['LINEAR_LS', 'NONLINEAR_LS']:
         W_ = ocp_solver.cost_get(1, 'W')
-        assert np.allclose(W_, cost.W)
+        np.testing.assert_allclose(W_, cost.W)
 
     if cost_e.cost_type_e in ['LINEAR_LS', 'NONLINEAR_LS', 'CONVEX_OVER_NONLINEAR']:
         yref_e_ = ocp_solver.cost_get(ocp.solver_options.N_horizon, 'yref')
-        assert np.allclose(yref_e_, cost_e.yref_e)
+        np.testing.assert_allclose(yref_e_, cost_e.yref_e)
 
     if cost.cost_type in ['LINEAR_LS', 'NONLINEAR_LS']:
         W_e_ = ocp_solver.cost_get(ocp.solver_options.N_horizon, 'W')
-        assert np.allclose(W_e_, cost_e.W_e)
+        np.testing.assert_allclose(W_e_, cost_e.W_e)
 
     # plot results
     if plot:

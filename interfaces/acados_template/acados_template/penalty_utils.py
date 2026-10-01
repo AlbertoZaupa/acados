@@ -3,33 +3,11 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 import casadi as ca
+import numpy as np
 
 def huber_loss(var: ca.SX, delta: float, tau: float) -> Tuple[ca.SX, ca.SX, ca.SX, ca.SX]:
     """
@@ -147,3 +125,12 @@ def symmetric_huber_penalty(
 
     return penalty, penalty_grad, penalty_hess, penalty_hess_xgn
 
+
+def get_quadratic_penalty_expression(h_expr: Union[ca.SX, ca.MX], lh: np.ndarray, uh: np.ndarray, Z_l: np.ndarray, Z_u: np.ndarray):
+    """
+    Returns a CasADi expression corresponding to a quadratic penalty on the constraint violation with quadratic weight diag(Z_l) for lower bound violations and diag(Z_u) for upper bound violations..
+    """
+    lower_violation = ca.fmax(lh - h_expr, 0)
+    upper_violation = ca.fmax(h_expr - uh, 0)
+
+    return 0.5 * ca.sum1(Z_l * lower_violation**2 + Z_u * upper_violation**2)

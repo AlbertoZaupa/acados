@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -170,7 +148,7 @@ static double ocp_nlp_compute_merit_gradient(ocp_nlp_config *config, ocp_nlp_dim
     // cost
     for (i=0; i<=N; i++)
     {
-        tmp_vec = config->cost[i]->memory_get_grad_ptr(mem->cost[i]);
+        tmp_vec = config->cost[i]->memory_get(mem->cost[i], "grad");
         merit_grad += blasfeo_ddot(nv[i], tmp_vec, 0, mem->qp_out->ux + i, 0);
     }
     double merit_grad_cost = merit_grad;
@@ -657,7 +635,7 @@ double ocp_nlp_evaluate_merit_fun(ocp_nlp_config *config, ocp_nlp_dims *dims,
     double cost_fun = 0.0;
     for(int i=0; i<=N; i++)
     {
-        tmp_fun = config->cost[i]->memory_get_fun_ptr(mem->cost[i]);
+        tmp_fun = config->cost[i]->memory_get(mem->cost[i], "fun");
         cost_fun += *tmp_fun;
     }
 
@@ -795,7 +773,7 @@ static int ocp_nlp_ddp_backtracking_line_search(ocp_nlp_config *config, ocp_nlp_
         trial_cost = 0.0;
         for(i=0; i<=N; i++)
         {
-            tmp_fun = config->cost[i]->memory_get_fun_ptr(nlp_mem->cost[i]);
+            tmp_fun = config->cost[i]->memory_get(nlp_mem->cost[i], "fun");
             trial_cost += *tmp_fun;
         }
 

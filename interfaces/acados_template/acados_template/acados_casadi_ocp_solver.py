@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 from typing import Union, Optional, List
 from deprecated.sphinx import deprecated
@@ -305,13 +282,6 @@ class AcadosCasadiOcpSolver:
     def load_iterate(self, filename:str, verbose: bool = True):
         raise NotImplementedError()
 
-    @deprecated(version="0.5.4", reason="AcadosOcpSolver.store_iterate_to_obj() is deprecated, use AcadosOcpSolver.get_iterate() instead.")
-    def store_iterate_to_obj(self) -> AcadosOcpIterate:
-        """
-        Returns the current iterate of the OCP solver as an AcadosOcpIterate.
-        """
-        return self.get_iterate()
-
     def get_iterate(self) -> AcadosOcpIterate:
         """
         Returns the current iterate of the OCP solver as an AcadosOcpIterate.
@@ -323,25 +293,9 @@ class AcadosCasadiOcpSolver:
                 if n < self.ocp.dims.N or not (field in ["u", "pi", "z"]):
                     traj.append(self.get(n, field))
 
-            d[f"{field}_traj"] = traj
+            d[f"{field}"] = traj
 
         return AcadosOcpIterate(**d)
-
-    @deprecated(version="0.5.4", reason="load_iterate_from_obj() is deprecated, use set_iterate() instead.")
-    def load_iterate_from_obj(self, iterate: AcadosOcpIterate) -> None:
-        """
-        Loads the provided iterate into the OCP solver.
-        Note: The iterate object does not contain the parameters.
-        """
-        self.set_iterate(iterate)
-
-
-    @deprecated(version="0.5.4", reason="store_iterate_to_flat_obj is deprecated, use get_flat_iterate instead.")
-    def store_iterate_to_flat_obj(self) -> AcadosOcpFlattenedIterate:
-        """
-        Returns the current iterate of the OCP solver as an AcadosOcpFlattenedIterate.
-        """
-        return self.get_flat_iterate()
 
 
     def get_flat_iterate(self) -> AcadosOcpFlattenedIterate:
@@ -355,15 +309,6 @@ class AcadosCasadiOcpSolver:
                                          sl = self.get_flat("sl"),
                                          su = self.get_flat("su"),
                                          z = self.get_flat("z"))
-
-
-    @deprecated(version="0.5.4", reason="load_iterate_from_flat_obj() is deprecated, use set_iterate() instead.")
-    def load_iterate_from_flat_obj(self, iterate: AcadosOcpFlattenedIterate) -> None:
-        """
-        Loads the provided iterate into the OCP solver.
-        Note: The iterate object does not contain the parameters.
-        """
-        self.set_iterate(iterate)
 
 
     def set_iterate(self, iterate: Union[AcadosOcpIterate, AcadosOcpFlattenedIterate]) -> None:

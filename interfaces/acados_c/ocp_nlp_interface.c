@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -44,6 +22,7 @@
 #include "acados/ocp_nlp/ocp_nlp_cost_nls.h"
 #include "acados/ocp_nlp/ocp_nlp_cost_conl.h"
 #include "acados/ocp_nlp/ocp_nlp_dynamics_cont.h"
+#include "acados/ocp_nlp/ocp_nlp_dynamics_cont_with_cost.h"
 #include "acados/ocp_nlp/ocp_nlp_dynamics_disc.h"
 #include "acados/ocp_nlp/ocp_nlp_constraints_bgh.h"
 #include "acados/ocp_nlp/ocp_nlp_constraints_bgp.h"
@@ -314,6 +293,30 @@ ocp_nlp_config *ocp_nlp_config_create(ocp_nlp_plan_t plan)
                 sim_solver_t solver_name = plan.sim_solver_plan[i].sim_solver;
 
                 switch (solver_name)
+                {
+                    case ERK:
+                        sim_erk_config_initialize_default(config->dynamics[i]->sim_solver);
+                        break;
+                    case IRK:
+                        sim_irk_config_initialize_default(config->dynamics[i]->sim_solver);
+                        break;
+                    case GNSF:
+                        sim_gnsf_config_initialize_default(config->dynamics[i]->sim_solver);
+                        break;
+                    case LIFTED_IRK:
+                        sim_lifted_irk_config_initialize_default(config->dynamics[i]->sim_solver);
+                        break;
+                    default:
+                        printf("\nerror: ocp_nlp_config_create: unsupported plan->sim_solver\n");
+                        exit(1);
+                }
+
+                break;
+            case CONTINUOUS_MODEL_WITH_COST:
+                ocp_nlp_dynamics_cont_with_cost_config_initialize_default(config->dynamics[i], i);
+                sim_solver_t solver_name_cost = plan.sim_solver_plan[i].sim_solver;
+
+                switch (solver_name_cost)
                 {
                     case ERK:
                         sim_erk_config_initialize_default(config->dynamics[i]->sim_solver);
@@ -967,6 +970,10 @@ void ocp_nlp_constraint_dims_get_from_attr(ocp_nlp_config *config, ocp_nlp_dims 
         config->constraints[stage]->dims_get(config->constraints[stage], dims->constraints[stage],
                                             "ni", &dims_out[0]);
         dims_out[0] *= 2;
+    }
+    else if (!strcmp(field, "idxs_rev"))
+    {
+        dims_out[0] = dims->ni[stage] - dims->ns[stage];
     }
     // matrices
     else if (!strcmp(field, "C"))
@@ -1756,7 +1763,7 @@ void ocp_nlp_get_at_stage(ocp_nlp_solver *solver, int stage, const char *field, 
             printf("\nwarning: S_p requested at terminal stage %d; returning empty.\n", stage);
         }
     }
-    else if (!strcmp(field, "ineq_fun") || !strcmp(field, "res_stat") || !strcmp(field, "res_eq"))
+    else if (!strcmp(field, "ineq_fun") || !strcmp(field, "res_stat") || !strcmp(field, "res_eq") || !strcmp(field, "cost_value") || !strcmp(field, "slack_cost_value"))
     {
         ocp_nlp_memory_get_at_stage(config, dims, nlp_mem, stage, field, value);
     }
@@ -2005,6 +2012,13 @@ void ocp_nlp_get_all(ocp_nlp_solver *solver, ocp_nlp_in *in, ocp_nlp_out *out, c
                 double_values[tmp_offset + ii] = in->parameter_values[stage][ii];
             }
             tmp_offset += tmp_int;
+        }
+    }
+    else if (!strcmp(field, "cost_value") || !strcmp(field, "slack_cost_value"))
+    {
+        for (stage = 0; stage < N+1; stage++)
+        {
+            ocp_nlp_get_at_stage(solver, stage, field, &double_values[stage]);
         }
     }
     else

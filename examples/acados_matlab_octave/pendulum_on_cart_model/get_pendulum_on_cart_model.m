@@ -3,33 +3,18 @@
 %
 % This file is part of acados.
 %
-% The 2-Clause BSD License
-%
-% Redistribution and use in source and binary forms, with or without
-% modification, are permitted provided that the following conditions are met:
-%
-% 1. Redistributions of source code must retain the above copyright notice,
-% this list of conditions and the following disclaimer.
-%
-% 2. Redistributions in binary form must reproduce the above copyright notice,
-% this list of conditions and the following disclaimer in the documentation
-% and/or other materials provided with the distribution.
-%
-% THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-% AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-% IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-% ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-% LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-% CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-% SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-% INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-% CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-% ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-% POSSIBILITY OF SUCH DAMAGE.;
+% Licensed under the 2-Clause BSD License.
 
-function model = get_pendulum_on_cart_model()
+function model = get_pendulum_on_cart_model(formulation)
 
     import casadi.*
+
+    if nargin == 0
+        formulation = 'ode';
+    end
+    if ~ismember(lower(formulation), {'ode', 'dae'})
+        error('Unsupported pendulum formulation: %s. Use ''ode'' or ''dae''.', formulation);
+    end
 
     %% system dimensions
     nx = 4;
@@ -56,17 +41,27 @@ function model = get_pendulum_on_cart_model()
     sin_theta = sin(theta);
     cos_theta = cos(theta);
     denominator = M + m - m*cos_theta.^2;
-    f_expl_expr = vertcat(v, ...
-                             dtheta, ...
-                             (- l*m*sin_theta*dtheta.^2 + F + g*m*cos_theta*sin_theta)/denominator, ...
-                             (- l*m*cos_theta*sin_theta*dtheta.^2 + F*cos_theta + g*m*sin_theta + M*g*sin_theta)/(l*denominator));
+    cart_acceleration = (- l*m*sin_theta*dtheta.^2 + F + g*m*cos_theta*sin_theta)/denominator;
+    angular_acceleration_numerator = - l*m*cos_theta*sin_theta*dtheta.^2 + F*cos_theta + g*m*sin_theta + M*g*sin_theta;
+    angular_acceleration = angular_acceleration_numerator/(l*denominator);
+    f_expl_expr = vertcat(v, dtheta, cart_acceleration, angular_acceleration);
     f_impl_expr = f_expl_expr - xdot;
+
+    if strcmpi(formulation, 'dae')
+        z = SX.sym('z');
+        dae_angular_acceleration = (angular_acceleration_numerator - l*m*z)/(l*denominator);
+        dae_algebraic_equation = cos_theta*sin_theta*dtheta.^2 - z;
+        f_impl_expr = vertcat(f_expl_expr(1:3), dae_angular_acceleration, dae_algebraic_equation) - vertcat(xdot, z);
+    end
 
     % populate
     model = AcadosModel();
     model.x = x;
     model.xdot = xdot;
     model.u = u;
+    if strcmpi(formulation, 'dae')
+        model.z = z;
+    end
 
     model.f_expl_expr = f_expl_expr;
     model.f_impl_expr = f_impl_expr;

@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 from typing import Union, Optional
 import json
@@ -138,7 +115,7 @@ def check_casadi_version():
         raise Exception(f'CasADi version {casadi_version} is not supported. '
                         'Please use a version >= 3.4.0.')
 
-    if major > 3 or (major == 3 and minor > 7): # >= 3.7
+    if major > 3 or (major == 3 and minor > 8): # >= 3.7
         warnings.warn(f"CasADi version {casadi_version} is not tested with acados yet.")
     elif major == 3 and minor < 7:
         warnings.warn(f"Full featured acados requires CasADi version >= 3.7, got {casadi_version}.")
@@ -776,16 +753,16 @@ def verify_weighting_matrix(A, name, tol=1e-10):
     if A.shape[0] != A.shape[1]:
         raise ValueError(f"Weighting matrix {name} is not square.")
     if not np.allclose(A, A.T, atol=tol):
-        raise warnings.warn(f"Weighting matrix {name} is not symmetric.")
+        warnings.warn(f"Weighting matrix {name} is not symmetric.")
     else:
         # check whether A is diagonal
         if np.all(np.abs(A - np.diag(np.diag(A))) < tol):
             if np.any(np.diag(A) < 0):
-                raise warnings.warn(f"Diagonal weighting matrix {name} is not positive semi-definite.")
+                warnings.warn(f"Diagonal weighting matrix {name} is not positive semi-definite.")
         else:
             try:
                 E = np.linalg.eigvalsh(A)
             except:
-                raise warnings.warn(f"Eigenvalue decomposition of weighting matrix {name} failed, the matrix might not be positive definite.")
+                warnings.warn(f"Eigenvalue decomposition of weighting matrix {name} failed, the matrix might not be positive definite.")
             if not np.all(E > tol):
-                raise warnings.warn(f"Weighting matrix {name} is not positive definite.")
+                warnings.warn(f"Weighting matrix {name} is not positive definite.")

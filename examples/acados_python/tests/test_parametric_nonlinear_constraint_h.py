@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 import sys
 sys.path.insert(0, '../pendulum_on_cart/common')
@@ -128,7 +105,7 @@ def main():
             ocp_solver.set_params_sparse(i, np.array(range(n_param)), np.zeros(n_param))
             ocp_solver.set_params_sparse(i, np.ascontiguousarray([0, 1]), np.array([1.0, 1.0]))
             p_out = ocp_solver.get(i, "p")
-            assert np.allclose(p_out, p_0)
+            np.testing.assert_allclose(p_out, p_0)
 
     solX = np.zeros((N+1, nx))
     solU = np.zeros((N, nu))
@@ -139,10 +116,9 @@ def main():
         raise Exception(f'acados returned status {status}.')
 
     # get solution
-    for i in range(N):
-        solX[i,:] = ocp_solver.get(i, "x")
-        solU[i,:] = ocp_solver.get(i, "u")
-    solX[N,:] = ocp_solver.get(N, "x")
+    iterate = ocp_solver.get_iterate()
+    solX[:] = iterate.x
+    solU[:] = iterate.u
 
     ocp_solver.print_statistics()
 

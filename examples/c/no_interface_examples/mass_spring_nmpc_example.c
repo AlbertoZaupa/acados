@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -664,7 +642,7 @@ int main() {
     void *nlp_in_mem = malloc(tmp_size);
     ocp_nlp_in *nlp_in = ocp_nlp_in_assign(config, dims, nlp_in_mem);
 
-// ocp_nlp_dims_print(nlp_in->dims);
+// print_ocp_nlp_dims(nlp_in->dims);
 
     // sampling times
     double Ts = 0.5;
@@ -683,21 +661,22 @@ int main() {
     }
     cost[N]->ext_cost_fun_jac_hess = &ext_costN_generic;
 
-    blasfeo_pack_dvec(ns[0], Zl0, 1, &cost[0]->Z, 0);
-    blasfeo_pack_dvec(ns[0], Zu0, 1, &cost[0]->Z, ns[0]);
-    blasfeo_pack_dvec(ns[0], zl0, 1, &cost[0]->z, 0);
-    blasfeo_pack_dvec(ns[0], zu0, 1, &cost[0]->z, ns[0]);
+    ocp_nlp_cost_model_set(config, dims, nlp_in, 0, "Zl", Zl0);
+    ocp_nlp_cost_model_set(config, dims, nlp_in, 0, "Zu", Zu0);
+    ocp_nlp_cost_model_set(config, dims, nlp_in, 0, "zl", zl0);
+    ocp_nlp_cost_model_set(config, dims, nlp_in, 0, "zu", zu0);
+
     for (ii=1; ii<N; ii++)
     {
-        blasfeo_pack_dvec(ns[ii], Zl1, 1, &cost[ii]->Z, 0);
-        blasfeo_pack_dvec(ns[ii], Zu1, 1, &cost[ii]->Z, ns[ii]);
-        blasfeo_pack_dvec(ns[ii], zl1, 1, &cost[ii]->z, 0);
-        blasfeo_pack_dvec(ns[ii], zu1, 1, &cost[ii]->z, ns[ii]);
+        ocp_nlp_cost_model_set(config, dims, nlp_in, ii, "Zl", Zl1);
+        ocp_nlp_cost_model_set(config, dims, nlp_in, ii, "Zu", Zu1);
+        ocp_nlp_cost_model_set(config, dims, nlp_in, ii, "zl", zl1);
+        ocp_nlp_cost_model_set(config, dims, nlp_in, ii, "zu", zu1);
     }
-    blasfeo_pack_dvec(ns[N], ZlN, 1, &cost[N]->Z, 0);
-    blasfeo_pack_dvec(ns[N], ZuN, 1, &cost[N]->Z, ns[N]);
-    blasfeo_pack_dvec(ns[N], zlN, 1, &cost[N]->z, 0);
-    blasfeo_pack_dvec(ns[N], zuN, 1, &cost[N]->z, ns[N]);
+    ocp_nlp_cost_model_set(config, dims, nlp_in, N, "Zl", ZlN);
+    ocp_nlp_cost_model_set(config, dims, nlp_in, N, "Zu", ZuN);
+    ocp_nlp_cost_model_set(config, dims, nlp_in, N, "zl", zlN);
+    ocp_nlp_cost_model_set(config, dims, nlp_in, N, "zu", zuN);
 
 
     /* dynamics */
@@ -799,7 +778,7 @@ int main() {
     void *nlp_out_mem = malloc(tmp_size);
     ocp_nlp_out *nlp_out = ocp_nlp_out_assign(config, dims, nlp_out_mem);
 
-// ocp_nlp_dims_print(nlp_out->dims);
+// print_ocp_nlp_dims(nlp_out->dims);
 
     /************************************************
     * sqp memory
@@ -856,10 +835,10 @@ int main() {
     double time = acados_toc(&timer)/NREP;
 
     printf("\nresiduals (max = %e)\n", nlp_out->inf_norm_res);
-// ocp_nlp_res_print(dims, nlp_mem->nlp_res);
+// print_ocp_nlp_res(dims, nlp_mem->nlp_res);
 
     printf("\nsolution\n");
-    ocp_nlp_out_print(dims, nlp_out);
+    print_ocp_nlp_out(dims, nlp_out);
 
     int sqp_iter;
     ocp_nlp_sqp_get(config, dims, nlp_mem, "sqp_iter", &sqp_iter);

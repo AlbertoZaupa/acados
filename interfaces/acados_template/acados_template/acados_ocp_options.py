@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 import os
 import warnings, inspect
@@ -34,7 +11,7 @@ import warnings, inspect
 from deprecated.sphinx import deprecated
 from .utils import check_if_nparray_and_flatten, use_int_or_cast_to_1d_nparray
 
-INTEGRATOR_TYPES = ('ERK', 'IRK', 'GNSF', 'DISCRETE', 'LIFTED_IRK')
+INTEGRATOR_TYPES = ('ERK', 'ERK_WITH_COST', 'IRK', 'GNSF', 'DISCRETE', 'LIFTED_IRK')
 COLLOCATION_TYPES = ('GAUSS_RADAU_IIA', 'GAUSS_LEGENDRE', 'EXPLICIT_RUNGE_KUTTA')
 COST_DISCRETIZATION_TYPES = ('EULER', 'INTEGRATOR')
 
@@ -470,7 +447,7 @@ class AcadosOcpOptions:
     def integrator_type(self):
         """
         Integrator type.
-        String in ('ERK', 'IRK', 'GNSF', 'DISCRETE', 'LIFTED_IRK').
+        String in ('ERK', 'ERK_WITH_COST', 'IRK', 'GNSF', 'DISCRETE', 'LIFTED_IRK').
         Default: 'ERK'.
         """
         return self.__integrator_type
@@ -1041,7 +1018,6 @@ class AcadosOcpOptions:
         For OSQP:
         - 0: cold
         - 1: warm
-        - setting can not be changed after first QP solve, so this only works if nlp_solver_warm_start_first_qp is True.
 
         Default: 0
         """
@@ -2208,6 +2184,7 @@ class AcadosOcpOptions:
 
     @exact_hess_constr.setter
     def exact_hess_constr(self, exact_hess_constr):
+        exact_hess_constr = int(exact_hess_constr)
         if exact_hess_constr in [0, 1]:
             self.__exact_hess_constr = exact_hess_constr
         else:
@@ -2223,6 +2200,7 @@ class AcadosOcpOptions:
 
     @exact_hess_cost.setter
     def exact_hess_cost(self, exact_hess_cost):
+        exact_hess_cost = int(exact_hess_cost)
         if exact_hess_cost in [0, 1]:
             self.__exact_hess_cost = exact_hess_cost
         else:
@@ -2238,6 +2216,7 @@ class AcadosOcpOptions:
 
     @exact_hess_dyn.setter
     def exact_hess_dyn(self, exact_hess_dyn):
+        exact_hess_dyn = int(exact_hess_dyn)
         if exact_hess_dyn in [0, 1]:
             self.__exact_hess_dyn = exact_hess_dyn
         else:
@@ -2608,7 +2587,6 @@ class AcadosOcpQpOptions:
         For OSQP:
         - 0: cold
         - 1: warm
-        - setting can not be changed after first QP solve.
 
         Default: 0
         """

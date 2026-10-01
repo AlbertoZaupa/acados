@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -150,7 +128,7 @@ void *ocp_nlp_reg_glm_memory_assign(void *config_, ocp_nlp_reg_dims *dims, void 
 
 
 
-void ocp_nlp_reg_glm_memory_set_RSQrq_ptr(ocp_nlp_reg_dims *dims, struct blasfeo_dmat *RSQrq, void *memory_)
+void ocp_nlp_reg_glm_memory_set(void *config_, ocp_nlp_reg_dims *dims, void *memory_, char *field, void *value)
 {
     ocp_nlp_reg_glm_memory *memory = memory_;
 
@@ -158,77 +136,51 @@ void ocp_nlp_reg_glm_memory_set_RSQrq_ptr(ocp_nlp_reg_dims *dims, struct blasfeo
 
     int N = dims->N;
 
-    for(ii=0; ii<=N; ii++)
+    if(!strcmp(field, "RSQrq_ptr"))
     {
-        memory->RSQrq[ii] = RSQrq+ii;
+        struct blasfeo_dmat *RSQrq = value;
+        for(ii=0; ii<=N; ii++)
+        {
+            memory->RSQrq[ii] = RSQrq+ii;
+        }
     }
-
-    return;
-}
-
-
-
-void ocp_nlp_reg_glm_memory_set_rq_ptr(ocp_nlp_reg_dims *dims, struct blasfeo_dvec *rq, void *memory_)
-{
-    return;
-}
-
-
-
-void ocp_nlp_reg_glm_memory_set_BAbt_ptr(ocp_nlp_reg_dims *dims, struct blasfeo_dmat *BAbt, void *memory_)
-{
-    return;
-}
-
-
-
-void ocp_nlp_reg_glm_memory_set_b_ptr(ocp_nlp_reg_dims *dims, struct blasfeo_dvec *b, void *memory_)
-{
-    return;
-}
-
-
-
-void ocp_nlp_reg_glm_memory_set_idxb_ptr(ocp_nlp_reg_dims *dims, int **idxb, void *memory_)
-{
-    return;
-}
-
-
-
-void ocp_nlp_reg_glm_memory_set_DCt_ptr(ocp_nlp_reg_dims *dims, struct blasfeo_dmat *DCt, void *memory_)
-{
-    return;
-}
-
-
-
-void ocp_nlp_reg_glm_memory_set_ux_ptr(ocp_nlp_reg_dims *dims, struct blasfeo_dvec *ux, void *memory_)
-{
-    return;
-}
-
-
-
-void ocp_nlp_reg_glm_memory_set_pi_ptr(ocp_nlp_reg_dims *dims, struct blasfeo_dvec *pi, void *memory_)
-{
-    return;
-}
-
-
-
-void ocp_nlp_reg_glm_memory_set_lam_ptr(ocp_nlp_reg_dims *dims, struct blasfeo_dvec *lam, void *memory_)
-{
-    return;
-}
-
-
-
-void ocp_nlp_reg_glm_memory_set(void *config_, ocp_nlp_reg_dims *dims, void *memory_, char *field, void *value)
-{
-    // TODO: remove this function in all regularizaiton modules
-    printf("\nerror: field %s not available in ocp_nlp_reg_glm_set\n", field);
-    exit(1);
+    else if(!strcmp(field, "rq_ptr"))
+    {
+        // no-op
+    }
+    else if(!strcmp(field, "BAbt_ptr"))
+    {
+        // no-op
+    }
+    else if(!strcmp(field, "b_ptr"))
+    {
+        // no-op
+    }
+    else if(!strcmp(field, "idxb_ptr"))
+    {
+        // no-op
+    }
+    else if(!strcmp(field, "DCt_ptr"))
+    {
+        // no-op
+    }
+    else if(!strcmp(field, "ux_ptr"))
+    {
+        // no-op
+    }
+    else if(!strcmp(field, "pi_ptr"))
+    {
+        // no-op
+    }
+    else if(!strcmp(field, "lam_ptr"))
+    {
+        // no-op
+    }
+    else
+    {
+        printf("\nerror: field %s not available in ocp_nlp_reg_glm_set\n", field);
+        exit(1);
+    }
 
     return;
 }
@@ -252,9 +204,6 @@ void ocp_nlp_reg_glm_regularize(void *config, ocp_nlp_reg_dims *dims, void *opts
 
     for(ii=0; ii<=dims->N; ii++)
     {
-        // make symmetric
-        blasfeo_dtrtr_l(nu[ii]+nx[ii], mem->RSQrq[ii], 0, 0, mem->RSQrq[ii], 0, 0);
-
         // regularize
         compute_gershgorin_min_eig_estimate(nu[ii]+nx[ii], mem->RSQrq[ii], &tmp);
         if (tmp < opts->epsilon)
@@ -303,15 +252,6 @@ void ocp_nlp_reg_glm_config_initialize_default(ocp_nlp_reg_config *config)
     config->memory_calculate_size = &ocp_nlp_reg_glm_memory_calculate_size;
     config->memory_assign = &ocp_nlp_reg_glm_memory_assign;
     config->memory_set = &ocp_nlp_reg_glm_memory_set;
-    config->memory_set_RSQrq_ptr = &ocp_nlp_reg_glm_memory_set_RSQrq_ptr;
-    config->memory_set_rq_ptr = &ocp_nlp_reg_glm_memory_set_rq_ptr;
-    config->memory_set_BAbt_ptr = &ocp_nlp_reg_glm_memory_set_BAbt_ptr;
-    config->memory_set_b_ptr = &ocp_nlp_reg_glm_memory_set_b_ptr;
-    config->memory_set_idxb_ptr = &ocp_nlp_reg_glm_memory_set_idxb_ptr;
-    config->memory_set_DCt_ptr = &ocp_nlp_reg_glm_memory_set_DCt_ptr;
-    config->memory_set_ux_ptr = &ocp_nlp_reg_glm_memory_set_ux_ptr;
-    config->memory_set_pi_ptr = &ocp_nlp_reg_glm_memory_set_pi_ptr;
-    config->memory_set_lam_ptr = &ocp_nlp_reg_glm_memory_set_lam_ptr;
     // functions
     config->regularize = &ocp_nlp_reg_glm_regularize;
     config->regularize_rhs = &ocp_nlp_reg_glm_regularize_rhs;

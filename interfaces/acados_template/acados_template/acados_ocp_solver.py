@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 import importlib
 import json
@@ -62,7 +39,7 @@ from .acados_ocp_iterate import AcadosOcpIterate, AcadosOcpIterates, AcadosOcpFl
 
 class AcadosOcpSolver:
     """
-    Class to interact with the acados ocp solver C object.
+    Class to interact with the acados OCP solver C object.
 
     :param ocp: type :py:class:`~acados_template.acados_ocp.AcadosOcp` or :py:class:`~acados_template.acados_multiphase_ocp.AcadosMultiphaseOcp` (description of the OCP for acados)
     :param json_file: name for the json file used to render the templated code (default: ``acados_ocp_nlp.json``)
@@ -248,7 +225,8 @@ class AcadosOcpSolver:
         ocp_solver_pyx = importlib.import_module(f'{os.path.split(ocp.code_gen_options.code_export_directory)[1]}.acados_ocp_solver_pyx')
 
         AcadosOcpSolverCython = getattr(ocp_solver_pyx, 'AcadosOcpSolverCython')
-        return AcadosOcpSolverCython(ocp.name, ocp.solver_options.nlp_solver_type, ocp.solver_options.N_horizon)
+        return AcadosOcpSolverCython(ocp.name, ocp.solver_options.nlp_solver_type, ocp.solver_options.N_horizon,
+                                     ocp.solver_options.store_iterates)
 
     @property
     def save_p_global(self) -> bool:
@@ -578,15 +556,15 @@ class AcadosOcpSolver:
         self.set(0, "lbx", x0_bar)
         self.set(0, "ubx", x0_bar)
 
-        status = self.solve()
+        self._status = self.solve()
 
-        if status != 0:
+        if self.status != 0:
             if print_stats_on_failure:
                 self.print_statistics()
             if fail_on_nonzero_status:
-                raise RuntimeError(f'AcadosOcpSolver returned status {status} ({status_to_str(status)})')
+                raise RuntimeError(f'AcadosOcpSolver returned status {self.status} ({status_to_str(self.status)})')
             elif print_stats_on_failure:
-                warnings.warn(f'AcadosOcpSolver returned status {status} ({status_to_str(status)})')
+                warnings.warn(f'AcadosOcpSolver returned status {self.status} ({status_to_str(self.status)})')
 
         u0 = self.get(0, "u")
         return u0
@@ -1238,12 +1216,10 @@ class AcadosOcpSolver:
             return self.__p_global_values
 
         field = field_.encode('utf-8')
-
         dims = self.__acados_lib.ocp_nlp_dims_get_total_from_attr(self.nlp_config, self.nlp_dims, self.nlp_out, field)
 
         out = np.zeros((dims,), dtype=np.float64, order="C")
         out_data = cast(out.ctypes.data, POINTER(c_double))
-
         self.__acados_lib.ocp_nlp_get_all(self.nlp_solver, self.nlp_in, self.nlp_out, field, out_data)
 
         return out
@@ -1617,23 +1593,6 @@ class AcadosOcpSolver:
             self.set(int(stage), field, np.array(solution[key]))
 
 
-    @deprecated(version="0.5.4", reason="store_iterate_to_obj is deprecated, use get_iterate instead.")
-    def store_iterate_to_obj(self) -> AcadosOcpIterate:
-        """
-        Returns the current iterate of the OCP solver as an AcadosOcpIterate.
-        """
-        return self.get_iterate()
-
-
-    @deprecated(version="0.5.4", reason="load_iterate_from_obj is deprecated, use set_iterate instead.")
-    def load_iterate_from_obj(self, iterate: AcadosOcpIterate):
-        """
-        Loads the provided iterate into the OCP solver.
-        Note: The iterate object does not contain the parameters.
-        """
-        self.set_iterate(iterate)
-
-
     def set_iterate(self, iterate: Union[AcadosOcpIterate, AcadosOcpFlattenedIterate]) -> None:
         """
         Loads the provided iterate into the OCP solver.
@@ -1650,13 +1609,6 @@ class AcadosOcpSolver:
                     self.set(n, key, val)
 
 
-    @deprecated(version="0.5.4", reason="store_iterate_to_flat_obj is deprecated, use get_flat_iterate instead.")
-    def store_iterate_to_flat_obj(self) -> AcadosOcpFlattenedIterate:
-        """
-        Returns the current iterate of the OCP solver as an AcadosOcpFlattenedIterate.
-        """
-        return self.get_flat_iterate()
-
     def get_flat_iterate(self) -> AcadosOcpFlattenedIterate:
         """
         Returns the current iterate of the OCP solver as an AcadosOcpFlattenedIterate.
@@ -1669,33 +1621,6 @@ class AcadosOcpSolver:
                                          pi = self.get_flat("pi"),
                                          lam = self.get_flat("lam"))
 
-    @deprecated(version="0.5.4", reason="load_iterate_from_flat_obj is deprecated, use set_iterate instead.")
-    def load_iterate_from_flat_obj(self, iterate: AcadosOcpFlattenedIterate) -> None:
-        """
-        Loads the provided iterate into the OCP solver.
-        Note: The iterate object does not contain the parameters.
-        """
-        self.set_iterate(iterate)
-
-    @deprecated(version="0.5.4", reason="AcadosOcpSolver.get_status() is deprecated, use AcadosOcpSolver.status instead.")
-    def get_status(self) -> int:
-        """
-        Returns the status of the last solver call.
-
-        Status codes:
-            - 0: Success (ACADOS_SUCCESS)
-            - 1: NaN detected (ACADOS_NAN_DETECTED)
-            - 2: Maximum number of iterations reached (ACADOS_MAXITER)
-            - 3: Minimum step size reached (ACADOS_MINSTEP)
-            - 4: QP solver failed (ACADOS_QP_FAILURE)
-            - 5: Solver created (ACADOS_READY)
-            - 6: Problem unbounded (ACADOS_UNBOUNDED)
-            - 7: Solver timeout (ACADOS_TIMEOUT)
-            - 8: QP scaling could not satisfy bounds (ACADOS_QPSCALING_BOUNDS_NOT_SATISFIED); NOTE: this status is typically not returned by the solver, but can be checked via `get_stats('qpscaling_status')`
-
-        See `return_values` in https://github.com/acados/acados/blob/main/acados/utils/types.h
-        """
-        return self.status
 
     def get_stats(self, field_: str) -> Union[int, float, np.ndarray]:
         """
@@ -1902,22 +1827,33 @@ class AcadosOcpSolver:
                     + f'\n Possible values are {fields}.')
 
 
-    def get_cost(self) -> float:
+    def get_cost(self, per_stage: bool = False, slacks_cost_only: bool = False) -> Union[np.ndarray, float]:
         """
-        Returns the cost value of the current solution.
+        Evaluates and returns the cost value of the current solution.
+        per_stage: if True return an np.ndarray of shape (N_horizon+1,) with the cost per stage instead of the scalar total cost. Default: False
         """
         # compute cost internally
         self.__acados_lib.ocp_nlp_eval_cost(self.nlp_solver, self.nlp_in, self.nlp_out)
 
         # create output array
-        out = np.zeros((1,), dtype=np.float64, order="C")
+        if per_stage:
+            dim = self.ocp.solver_options.N_horizon + 1
+        else:
+            dim = 1
+
+        out = np.zeros((dim,), dtype=np.float64, order="C")
         out_data = cast(out.ctypes.data, POINTER(c_double))
 
         # call getter
-        field = "cost_value".encode('utf-8')
-        self.__acados_lib.ocp_nlp_get(self.nlp_solver, field, out_data)
+        field = "slack_cost_value" if slacks_cost_only else "cost_value"
+        field = field.encode('utf-8')
 
-        return out[0]
+        if per_stage:
+            self.__acados_lib.ocp_nlp_get_all(self.nlp_solver, self.nlp_in, self.nlp_out, field, out_data)
+        else:
+            self.__acados_lib.ocp_nlp_get(self.nlp_solver, field, out_data)
+
+        return out if per_stage else out[0]
 
 
     def get_residuals(self, recompute=False):
@@ -2213,7 +2149,7 @@ class AcadosOcpSolver:
         Set numerical data in the constraint module of the solver.
 
         :param stage: integer corresponding to shooting node
-        :param field: string in ['lbx', 'ubx', 'lbu', 'ubu', 'lg', 'ug', 'lh', 'uh', 'uphi', 'C', 'D']
+        :param field: string in ['lbx', 'ubx', 'lbu', 'ubu', 'lg', 'ug', 'lh', 'uh', 'uphi', 'C', 'D', 'idxs_rev']
         :param value: of appropriate size
         """
         # cast value_ to avoid conversion issues
@@ -2225,6 +2161,12 @@ class AcadosOcpSolver:
             raise TypeError('stage should be integer.')
         elif stage_ < 0 or stage_ > self.N:
             raise ValueError(f'stage should be in [0, N], got {stage_}')
+
+        constraint_int_fields = ['idxs_rev']
+        constraint_double_fields = ['lbx', 'ubx', 'lbu', 'ubu', 'lg', 'ug', 'lh', 'uh', 'uphi', 'C', 'D']
+
+        if not (field_ in constraint_double_fields or field_ in constraint_int_fields):
+            raise ValueError(f"field {field_} not supported, supported values are {constraint_double_fields + constraint_int_fields}")
 
         field = field_.encode('utf-8')
         stage = c_int(stage_)
@@ -2265,7 +2207,11 @@ class AcadosOcpSolver:
             raise ValueError(f'AcadosOcpSolver.constraints_set(): mismatching dimension' +
                 f' for field "{field_}" at stage {stage} with dimension {tuple(dims)} (you have {value_shape})')
 
-        value_data = cast(value_.ctypes.data, POINTER(c_double))
+        if field_ in constraint_double_fields:
+            value_data = cast(value_.ctypes.data, POINTER(c_double))
+        elif field_ in constraint_int_fields:
+            value_ = np.ascontiguousarray(value_, dtype=np.intc)
+            value_data = cast(value_.ctypes.data, POINTER(c_int))
         value_data_p = cast((value_data), c_void_p)
 
         self.__acados_lib.ocp_nlp_constraints_model_set(self.nlp_config, \

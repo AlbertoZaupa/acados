@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -939,107 +917,64 @@ struct blasfeo_dvec *ocp_nlp_constraints_bgp_memory_get_adj_ptr(void *memory_)
 }
 
 
-void ocp_nlp_constraints_bgp_memory_set(void *config_, void *dims_, void *memory_, char *field, void *value)
+void ocp_nlp_constraints_bgp_memory_set(void *config_, void *dims_, void *memory_, const char *field, void *value)
 {
-    // ocp_nlp_constraints_bgp_memory *memory = memory_;
-    printf("\nerror: field %s not available in ocp_nlp_constraints_bgp_memory_set\n", field);
-    exit(1);
+    ocp_nlp_constraints_bgp_memory *memory = memory_;
+
+    if (!strcmp(field, "ux_ptr"))
+    {
+        memory->ux = value;
+    }
+    else if (!strcmp(field, "lam_ptr"))
+    {
+        memory->lam = value;
+    }
+    else if (!strcmp(field, "DCt_ptr"))
+    {
+        memory->DCt = value;
+    }
+    else if (!strcmp(field, "RSQrq_ptr"))
+    {
+        memory->RSQrq = value;
+    }
+    else if (!strcmp(field, "z_alg_ptr"))
+    {
+        memory->z_alg = value;
+    }
+    else if (!strcmp(field, "dzduxt_ptr"))
+    {
+        memory->dzduxt = value;
+    }
+    else if (!strcmp(field, "idxb_ptr"))
+    {
+        memory->idxb = value;
+    }
+    else if (!strcmp(field, "idxs_rev_ptr"))
+    {
+        memory->idxs_rev = value;
+    }
+    else if (!strcmp(field, "idxe_ptr"))
+    {
+        memory->idxe = value;
+    }
+    else if (!strcmp(field, "orphan_mask_ptr"))
+    {
+        memory->orphan_mask = value;
+    }
+    else if (!strcmp(field, "jac_lag_stat_p_global_ptr") || !strcmp(field, "jac_ineq_p_global_ptr") ||
+              !strcmp(field, "adj_lag_p_global_ptr") || !strcmp(field, "seed_ux_ptr") || !strcmp(field, "seed_lam_ptr"))
+     {
+         return; // Do nothing. Sensitivities are not implemented for BGP constraints.
+            //  Interface checks if any p_global dependencies are there.
+            // If not, we allow using BGP.
+     }
+    else
+    {
+        printf("\nerror: field %s not available in ocp_nlp_constraints_bgp_memory_set\n", field);
+        exit(1);
+    }
 
     return;
-}
-
-
-
-void ocp_nlp_constraints_bgp_memory_set_ux_ptr(struct blasfeo_dvec *ux, void *memory_)
-{
-    ocp_nlp_constraints_bgp_memory *memory = memory_;
-
-    memory->ux = ux;
-}
-
-
-void ocp_nlp_constraints_bgp_memory_set_lam_ptr(struct blasfeo_dvec *lam, void *memory_)
-{
-    ocp_nlp_constraints_bgp_memory *memory = memory_;
-
-    memory->lam = lam;
-}
-
-
-
-
-void ocp_nlp_constraints_bgp_memory_set_DCt_ptr(struct blasfeo_dmat *DCt, void *memory_)
-{
-    ocp_nlp_constraints_bgp_memory *memory = memory_;
-
-    memory->DCt = DCt;
-}
-
-
-void ocp_nlp_constraints_bgp_memory_set_RSQrq_ptr(struct blasfeo_dmat *RSQrq, void *memory_)
-{
-    ocp_nlp_constraints_bgp_memory *memory = memory_;
-
-    memory->RSQrq = RSQrq;
-}
-
-
-
-void ocp_nlp_constraints_bgp_memory_set_z_alg_ptr(struct blasfeo_dvec *z_alg, void *memory_)
-{
-    ocp_nlp_constraints_bgp_memory *memory = memory_;
-
-    memory->z_alg = z_alg;
-}
-
-
-
-void ocp_nlp_constraints_bgp_memory_set_dzduxt_ptr(struct blasfeo_dmat *dzduxt, void *memory_)
-{
-    ocp_nlp_constraints_bgp_memory *memory = memory_;
-
-    memory->dzduxt = dzduxt;
-}
-
-
-
-
-void ocp_nlp_constraints_bgp_memory_set_idxb_ptr(int *idxb, void *memory_)
-{
-    ocp_nlp_constraints_bgp_memory *memory = memory_;
-
-    memory->idxb = idxb;
-}
-
-
-
-void ocp_nlp_constraints_bgp_memory_set_idxs_rev_ptr(int *idxs_rev, void *memory_)
-{
-    ocp_nlp_constraints_bgp_memory *memory = memory_;
-
-    memory->idxs_rev = idxs_rev;
-}
-
-
-
-void ocp_nlp_constraints_bgp_memory_set_idxe_ptr(int *idxe, void *memory_)
-{
-    ocp_nlp_constraints_bgp_memory *memory = memory_;
-
-    memory->idxe = idxe;
-}
-
-
-void ocp_nlp_constraints_bgp_memory_set_jac_lag_stat_p_global_ptr(struct blasfeo_dmat *jac_lag_stat_p_global, void *memory_)
-{
-    // ocp_nlp_constraints_bgp_memory *memory = memory_;
-    // memory->jac_lag_stat_p_global = jac_lag_stat_p_global;
-}
-
-void ocp_nlp_constraints_bgp_memory_set_jac_ineq_p_global_ptr(struct blasfeo_dmat *jac_ineq_p_global, void *memory_)
-{
-    // ocp_nlp_constraints_bgp_memory *memory = memory_;
-    // memory->jac_ineq_p_global = jac_ineq_p_global;
 }
 
 
@@ -1177,6 +1112,33 @@ void ocp_nlp_constraints_bgp_initialize(void *config_, void *dims_, void *model_
 
     // initialize general constraints matrix
     blasfeo_dgecp(nu + nx, ng, &model->DCt, 0, 0, memory->DCt, 0, 0);
+
+    return;
+}
+
+
+void ocp_nlp_constraints_bgp_update_slack_masks_wrt_orphans(void *config_, void *dims_, void *model_, void *opts,
+                                        void *memory_, void *work_)
+{
+    ocp_nlp_constraints_bgp_dims *dims = dims_;
+    ocp_nlp_constraints_bgp_model *model = model_;
+    ocp_nlp_constraints_bgp_memory *memory = memory_;
+
+    int ns = dims->ns;
+
+    /* slack mask update */
+    // 1) set slack mask to match bound
+    int offset_s_bounds = 2*(dims->nb+dims->ng+dims->nphi);
+    ocp_nlp_constraints_bgp_update_mask_lower(model, 2*ns, offset_s_bounds);
+
+    // 2) if bound does not indicate masking still mask, if orphan
+    for (int j = 0; j < 2*ns; j++)
+    {
+        if (BLASFEO_DVECEL(model->dmask, offset_s_bounds+j))
+        {
+            BLASFEO_DVECEL(model->dmask, offset_s_bounds+j) = BLASFEO_DVECEL(memory->orphan_mask, j);
+        }
+    }
 
     return;
 }
@@ -1651,21 +1613,11 @@ void ocp_nlp_constraints_bgp_config_initialize_default(void *config_, int stage)
     config->memory_get_fun_ptr = &ocp_nlp_constraints_bgp_memory_get_fun_ptr;
     config->memory_get_adj_ptr = &ocp_nlp_constraints_bgp_memory_get_adj_ptr;
     config->memory_set = &ocp_nlp_constraints_bgp_memory_set;
-    config->memory_set_ux_ptr = &ocp_nlp_constraints_bgp_memory_set_ux_ptr;
-    config->memory_set_lam_ptr = &ocp_nlp_constraints_bgp_memory_set_lam_ptr;
-    config->memory_set_DCt_ptr = &ocp_nlp_constraints_bgp_memory_set_DCt_ptr;
-    config->memory_set_RSQrq_ptr = &ocp_nlp_constraints_bgp_memory_set_RSQrq_ptr;
-    config->memory_set_z_alg_ptr = &ocp_nlp_constraints_bgp_memory_set_z_alg_ptr;
-    config->memory_set_dzdux_tran_ptr = &ocp_nlp_constraints_bgp_memory_set_dzduxt_ptr;
-    config->memory_set_idxb_ptr = &ocp_nlp_constraints_bgp_memory_set_idxb_ptr;
-    config->memory_set_idxs_rev_ptr = &ocp_nlp_constraints_bgp_memory_set_idxs_rev_ptr;
-    config->memory_set_idxe_ptr = &ocp_nlp_constraints_bgp_memory_set_idxe_ptr;
-    config->memory_set_jac_ineq_p_global_ptr = &ocp_nlp_constraints_bgp_memory_set_jac_ineq_p_global_ptr;
-    config->memory_set_jac_lag_stat_p_global_ptr = &ocp_nlp_constraints_bgp_memory_set_jac_lag_stat_p_global_ptr;
     config->workspace_calculate_size = &ocp_nlp_constraints_bgp_workspace_calculate_size;
     config->get_external_fun_workspace_requirement = &ocp_nlp_constraints_bgp_get_external_fun_workspace_requirement;
     config->set_external_fun_workspaces = &ocp_nlp_constraints_bgp_set_external_fun_workspaces;
     config->initialize = &ocp_nlp_constraints_bgp_initialize;
+    config->update_slack_masks_wrt_orphans = &ocp_nlp_constraints_bgp_update_slack_masks_wrt_orphans;
     config->precompute = &ocp_nlp_constraints_bgp_precompute;
     config->update_qp_matrices = &ocp_nlp_constraints_bgp_update_qp_matrices;
     config->compute_fun = &ocp_nlp_constraints_bgp_compute_fun;

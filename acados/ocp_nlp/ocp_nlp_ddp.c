@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -385,10 +363,10 @@ void ocp_nlp_ddp_compute_trial_iterate(void *config_, void *dims_,
 
         // evalutate dynamics
         // x_{i+1} = f_dyn_i(x_i, u_i)
-        config->dynamics[i]->memory_set_ux_ptr(out_destination->ux+i, mem->dynamics[i]);
+        config->dynamics[i]->memory_set(config->dynamics[i], dims->dynamics[i], mem->dynamics[i], "ux_ptr", out_destination->ux+i);
         config->dynamics[i]->compute_fun(config->dynamics[i], dims->dynamics[i],
             in->dynamics[i], opts->dynamics[i], mem->dynamics[i], work->dynamics[i]);
-        config->dynamics[i]->memory_set_ux_ptr(out->ux+i, mem->dynamics[i]);
+        config->dynamics[i]->memory_set(config->dynamics[i], dims->dynamics[i], mem->dynamics[i], "ux_ptr", out->ux+i);
 
         // f_dyn_i(x_i, u_i) - x_{i+1}
         // NOTE/TODO: store function output in dynamics module instead?
@@ -707,7 +685,7 @@ int ocp_nlp_ddp(void *config_, void *dims_, void *nlp_in_, void *nlp_out_,
             }
         }
         // Show input to QP
-        if (nlp_opts->print_level > 3)
+        if (nlp_opts->print_level > 3 + ddp_iter)
         {
             printf("\n\nDDP: ocp_qp_in at iteration %d\n", ddp_iter + 1);
             print_ocp_qp_in(qp_in);
@@ -721,7 +699,7 @@ int ocp_nlp_ddp(void *config_, void *dims_, void *nlp_in_, void *nlp_out_,
             qp_solver->opts_set(qp_solver, nlp_opts->qp_solver_opts, "warm_start", &nlp_opts->qp_warm_start);
         }
 
-        if (nlp_opts->print_level > 3)
+        if (nlp_opts->print_level > 3 + ddp_iter)
         {
             printf("\n\nDDP: ocp_qp_out at iteration %d\n", ddp_iter + 1);
             print_ocp_qp_out(qp_out);
@@ -759,7 +737,7 @@ int ocp_nlp_ddp(void *config_, void *dims_, void *nlp_in_, void *nlp_out_,
             // restore number of threads
             omp_set_num_threads(num_threads_bkp);
 #endif
-            if (nlp_opts->print_level > 3)
+            if (nlp_opts->print_level > 3 + ddp_iter)
             {
                 printf("\n Failed to solve the following QP:\n");
                 if (nlp_opts->print_level)

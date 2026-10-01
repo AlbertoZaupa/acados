@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -173,10 +151,10 @@ void ls_cost_jac_nm4(external_function_generic *fun, double *in, double *out)
 
 
 
-static void select_dynamics_casadi(int N, int num_free_masses, 
-	external_function_casadi *forw_vde, 
-	external_function_casadi *jac_ode, 
-	external_function_casadi *impl_ode_fun, 
+static void select_dynamics_casadi(int N, int num_free_masses,
+	external_function_casadi *forw_vde,
+	external_function_casadi *jac_ode,
+	external_function_casadi *impl_ode_fun,
 	external_function_casadi *impl_ode_fun_jac_x_xdot,
 	external_function_casadi *impl_ode_fun_jac_x_xdot_u,
 	external_function_casadi *impl_ode_jac_x_xdot_u,
@@ -1556,7 +1534,7 @@ int main() {
 
 
 
-// ocp_nlp_dims_print(nlp_in->dims);
+// print_ocp_nlp_dims(nlp_in->dims);
 
     // NOTE(dimitris): use nlp_in->dims instead of &dims from now on since nb is filled with nbx+nbu!
 
@@ -1895,9 +1873,9 @@ int main() {
 
 
 #if COST==1
-	// exact hessian of cost function at first stage
-	ocp_nlp_cost_nls_opts *cost_opts = nlp_opts->cost[0];
-	cost_opts->gauss_newton_hess = 1;
+	// Gauss-Newton hessian of cost function at first stage (default)
+	ocp_nlp_cost_common_opts *cost_opts = nlp_opts->cost[0];
+	cost_opts->exact_hess = 0;
 #endif
 
 
@@ -1927,7 +1905,7 @@ int main() {
 	void *nlp_out_mem = malloc(tmp_size);
 	ocp_nlp_out *nlp_out = ocp_nlp_out_assign(config, dims, nlp_out_mem);
 
-// ocp_nlp_dims_print(nlp_out->dims);
+// print_ocp_nlp_dims(nlp_out->dims);
 
     /************************************************
     * sqp memory
@@ -1973,10 +1951,10 @@ int main() {
     double time = acados_toc(&timer)/NREP;
 
 	// printf("\nresiduals\n");
-	// ocp_nlp_res_print(dims, nlp_mem->nlp_res);
+	// print_ocp_nlp_res(dims, nlp_mem->nlp_res);
 
 	printf("\nsolution\n");
-	ocp_nlp_out_print(dims, nlp_out);
+	print_ocp_nlp_out(dims, nlp_out);
 
     int sqp_iter;
     ocp_nlp_sqp_get(config, dims, nlp_mem, "sqp_iter", &sqp_iter);

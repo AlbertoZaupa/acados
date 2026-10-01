@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -87,95 +65,43 @@ void *ocp_nlp_dynamics_cont_dims_assign(void *config_, void *raw_memory)
 
 
 // setters
-static void ocp_nlp_dynamics_cont_set_nx(void *config_, void *dims_, int *nx)
-{
-    ocp_nlp_dynamics_cont_dims *dims = (ocp_nlp_dynamics_cont_dims *) dims_;
-    dims->nx = *nx;
-
-    ocp_nlp_dynamics_config *dyn_config = (ocp_nlp_dynamics_config *) config_;
-    sim_config *sim_config_ = (sim_config *) dyn_config->sim_solver;
-
-    sim_config_->dims_set(sim_config_, dims->sim, "nx", nx);
-}
-
-static void ocp_nlp_dynamics_cont_set_nx1(void *config_, void *dims_, int *nx1)
-{
-    ocp_nlp_dynamics_cont_dims *dims = (ocp_nlp_dynamics_cont_dims *) dims_;
-    dims->nx1 = *nx1;
-}
-
-static void ocp_nlp_dynamics_cont_set_nz(void *config_, void *dims_, int *nz)
-{
-    ocp_nlp_dynamics_cont_dims *dims = (ocp_nlp_dynamics_cont_dims *) dims_;
-    dims->nz = *nz;
-
-    ocp_nlp_dynamics_config *dyn_config = (ocp_nlp_dynamics_config *) config_;
-    sim_config *sim_config_ = (sim_config *) dyn_config->sim_solver;
-
-    sim_config_->dims_set(sim_config_, dims->sim, "nz", nz);
-}
-
-static void ocp_nlp_dynamics_cont_set_nu(void *config_, void *dims_, int *nu)
-{
-    ocp_nlp_dynamics_cont_dims *dims = (ocp_nlp_dynamics_cont_dims *) dims_;
-    dims->nu = *nu;
-
-    ocp_nlp_dynamics_config *dyn_config = (ocp_nlp_dynamics_config *) config_;
-    sim_config *sim_config_ = (sim_config *) dyn_config->sim_solver;
-
-    sim_config_->dims_set(sim_config_, dims->sim, "nu", nu);
-}
-
-static void ocp_nlp_dynamics_cont_set_nu1(void *config_, void *dims_, int *nu1)
-{
-    ocp_nlp_dynamics_cont_dims *dims = (ocp_nlp_dynamics_cont_dims *) dims_;
-    dims->nu1 = *nu1;
-}
-
-static void ocp_nlp_dynamics_cont_set_np(void *config_, void *dims_, int *np)
-{
-    ocp_nlp_dynamics_cont_dims *dims = (ocp_nlp_dynamics_cont_dims *) dims_;
-    dims->np = *np;
-
-    ocp_nlp_dynamics_config *dyn_config = (ocp_nlp_dynamics_config *) config_;
-    sim_config *sim_config_ = (sim_config *) dyn_config->sim_solver;
-
-    sim_config_->dims_set(sim_config_, dims->sim, "np", np);
-}
-
 void ocp_nlp_dynamics_cont_dims_set(void *config_, void *dims_, const char *field, int* value)
 {
+    ocp_nlp_dynamics_cont_dims *dims = (ocp_nlp_dynamics_cont_dims *) dims_;
+    ocp_nlp_dynamics_config *dyn_config = (ocp_nlp_dynamics_config *) config_;
+    sim_config *sim_config_ = (sim_config *) dyn_config->sim_solver;
+
     if (!strcmp(field, "nx"))
     {
-        ocp_nlp_dynamics_cont_set_nx(config_, dims_, value);
+        dims->nx = *value;
+        sim_config_->dims_set(sim_config_, dims->sim, "nx", value);
     }
     else if (!strcmp(field, "nx1"))
     {
-        ocp_nlp_dynamics_cont_set_nx1(config_, dims_, value);
+        dims->nx1 = *value;
     }
     else if (!strcmp(field, "nz"))
     {
-        ocp_nlp_dynamics_cont_set_nz(config_, dims_, value);
+        dims->nz = *value;
+        sim_config_->dims_set(sim_config_, dims->sim, "nz", value);
     }
     else if (!strcmp(field, "nu"))
     {
-        ocp_nlp_dynamics_cont_set_nu(config_, dims_, value);
+        dims->nu = *value;
+        sim_config_->dims_set(sim_config_, dims->sim, "nu", value);
     }
     else if (!strcmp(field, "nu1"))
     {
-        ocp_nlp_dynamics_cont_set_nu1(config_, dims_, value);
+        dims->nu1 = *value;
     }
     else if (!strcmp(field, "np"))
     {
-        ocp_nlp_dynamics_cont_set_np(config_, dims_, value);
+        dims->np = *value;
+        sim_config_->dims_set(sim_config_, dims->sim, "np", value);
     }
     else
     {
         // set GNSF dims just within integrator module
-        ocp_nlp_dynamics_config *dyn_config = (ocp_nlp_dynamics_config *) config_;
-        ocp_nlp_dynamics_cont_dims *dims = (ocp_nlp_dynamics_cont_dims *) dims_;
-        sim_config *sim_config_ = (sim_config *) dyn_config->sim_solver;
-
         sim_config_->dims_set(sim_config_, dims->sim, field, value);
     }
 }
@@ -292,11 +218,6 @@ void ocp_nlp_dynamics_cont_opts_update(void *config_, void *dims_, void *opts_)
     ocp_nlp_dynamics_cont_dims *dims = dims_;
     ocp_nlp_dynamics_cont_opts *opts = opts_;
 
-//    if (!opts->compute_hess)
-//    {
-//        bool bool_false = false;
-//        config->sim_solver->opts_set( config->sim_solver, opts->sim_solver, "sens_hess", &bool_false );
-//    }
     config->sim_solver->opts_update(config->sim_solver, dims->sim, opts->sim_solver);
 
     return;
@@ -315,18 +236,22 @@ void ocp_nlp_dynamics_cont_opts_set(void *config_, void *opts_, const char *fiel
     {
         int *int_ptr = value;
         opts->compute_adj = *int_ptr;
-        // TODO set in the sim solver too ???
+        bool tmp_bool = true;
+        if (*int_ptr == 0)
+        {
+            tmp_bool = false;
+        }
+        config->sim_solver->opts_set(config->sim_solver, opts->sim_solver, "sens_adj", &tmp_bool);
     }
     else if (!strcmp(field, "compute_hess"))
     {
         int *int_ptr = value;
         opts->compute_hess = *int_ptr;
         bool tmp_bool = true;
-        if (*int_ptr==0)
+        if (*int_ptr == 0)
         {
             tmp_bool = false;
         }
-        config->sim_solver->opts_set(config->sim_solver, opts->sim_solver, "sens_adj", &tmp_bool);
         config->sim_solver->opts_set(config->sim_solver, opts->sim_solver, "sens_hess", &tmp_bool);
     }
     else if(!strcmp(field, "with_solution_sens_wrt_params_forw"))
@@ -397,8 +322,7 @@ acados_size_t ocp_nlp_dynamics_cont_memory_calculate_size(void *config_, void *d
     size += 1 * blasfeo_memsize_dvec(nu + nx + nx1);  // adj
     size += 1 * blasfeo_memsize_dvec(nx1);            // fun
 
-    size +=
-        config->sim_solver->memory_calculate_size(config->sim_solver, dims->sim, opts->sim_solver);
+    size += config->sim_solver->memory_calculate_size(config->sim_solver, dims->sim, opts->sim_solver);
 
     size += 1*64;  // blasfeo_mem align
 
@@ -428,10 +352,8 @@ void *ocp_nlp_dynamics_cont_memory_assign(void *config_, void *dims_, void *opts
     c_ptr += sizeof(ocp_nlp_dynamics_cont_memory);
 
     // sim_solver
-    memory->sim_solver =
-        config->sim_solver->memory_assign(config->sim_solver, dims->sim, opts->sim_solver, c_ptr);
-    c_ptr +=
-        config->sim_solver->memory_calculate_size(config->sim_solver, dims->sim, opts->sim_solver);
+    memory->sim_solver = config->sim_solver->memory_assign(config->sim_solver, dims->sim, opts->sim_solver, c_ptr);
+    c_ptr += config->sim_solver->memory_calculate_size(config->sim_solver, dims->sim, opts->sim_solver);
 
     // blasfeo_mem align
     align_char_to(64, &c_ptr);
@@ -469,93 +391,6 @@ struct blasfeo_dvec *ocp_nlp_dynamics_cont_memory_get_adj_ptr(void *memory_)
 
 
 
-void ocp_nlp_dynamics_cont_memory_set_ux_ptr(struct blasfeo_dvec *ux, void *memory_)
-{
-    ocp_nlp_dynamics_cont_memory *memory = memory_;
-
-    memory->ux = ux;
-
-    return;
-}
-
-
-
-void ocp_nlp_dynamics_cont_memory_set_ux1_ptr(struct blasfeo_dvec *ux1, void *memory_)
-{
-    ocp_nlp_dynamics_cont_memory *memory = memory_;
-
-    memory->ux1 = ux1;
-
-    return;
-}
-
-
-void ocp_nlp_dynamics_cont_memory_set_pi_ptr(struct blasfeo_dvec *pi, void *memory_)
-{
-    ocp_nlp_dynamics_cont_memory *memory = memory_;
-
-    memory->pi = pi;
-
-    return;
-}
-
-
-
-void ocp_nlp_dynamics_cont_memory_set_BAbt_ptr(struct blasfeo_dmat *BAbt, void *memory_)
-{
-    ocp_nlp_dynamics_cont_memory *memory = memory_;
-
-    memory->BAbt = BAbt;
-
-    return;
-}
-
-
-
-void ocp_nlp_dynamics_cont_memory_set_RSQrq_ptr(struct blasfeo_dmat *RSQrq, void *memory_)
-{
-    ocp_nlp_dynamics_cont_memory *memory = memory_;
-
-    memory->RSQrq = RSQrq;
-
-    return;
-}
-
-
-
-void ocp_nlp_dynamics_cont_memory_set_dzduxt_ptr(struct blasfeo_dmat *mat, void *memory_)
-{
-    ocp_nlp_dynamics_cont_memory *memory = memory_;
-
-    memory->dzduxt = mat;
-
-    return;
-}
-
-
-
-void ocp_nlp_dynamics_cont_memory_set_sim_guess_ptr(struct blasfeo_dvec *vec, bool *bool_ptr, void *memory_)
-{
-    ocp_nlp_dynamics_cont_memory *memory = memory_;
-
-    memory->sim_guess = vec;
-    memory->set_sim_guess = bool_ptr;
-
-    return;
-}
-
-
-
-void ocp_nlp_dynamics_cont_memory_set_z_alg_ptr(struct blasfeo_dvec *vec, void *memory_)
-{
-    ocp_nlp_dynamics_cont_memory *memory = memory_;
-
-    memory->z_alg = vec;
-
-    return;
-}
-
-
 void ocp_nlp_dynamics_cont_memory_set(void *config_, void *dims_, void *mem_, const char *field, void* value)
 {
     ocp_nlp_dynamics_config *config = config_;
@@ -564,19 +399,51 @@ void ocp_nlp_dynamics_cont_memory_set(void *config_, void *dims_, void *mem_, co
 
     sim_config *sim = config->sim_solver;
 
-    if (!strcmp(field, "W_chol") || !strcmp(field, "W_chol_diag") || !strcmp(field, "cost_fun") || !strcmp(field, "outer_hess_is_diag") || !strcmp(field, "cost_hess") || !strcmp(field, "cost_grad")
-         || !strcmp(field, "y_ref"))
+    if (!strcmp(field, "ux_ptr"))
+    {
+        mem->ux = value;
+    }
+    else if (!strcmp(field, "ux1_ptr"))
+    {
+        mem->ux1 = value;
+    }
+    else if (!strcmp(field, "pi_ptr"))
+    {
+        mem->pi = value;
+    }
+    else if (!strcmp(field, "BAbt_ptr"))
+    {
+        mem->BAbt = value;
+    }
+    else if (!strcmp(field, "RSQrq_ptr"))
+    {
+        mem->RSQrq = value;
+    }
+    else if (!strcmp(field, "dzduxt_ptr"))
+    {
+        mem->dzduxt = value;
+    }
+    else if (!strcmp(field, "sim_guess"))
+    {
+        mem->sim_guess = value;
+    }
+    else if (!strcmp(field, "set_sim_guess"))
+    {
+        mem->set_sim_guess = value;
+    }
+    else if (!strcmp(field, "z_alg_ptr"))
+    {
+        mem->z_alg = value;
+    }
+    else if (!strcmp(field, "dyn_jac_p_global_ptr") || !strcmp(field, "jac_lag_stat_p_global_ptr") ||
+             !strcmp(field, "adj_lag_p_global_ptr") || !strcmp(field, "seed_ux_ptr") || !strcmp(field, "seed_pi_ptr"))
+    {
+        return;
+    }
+    else if (!strcmp(field, "cost_capsule_ptr"))
     {
         sim->memory_set(sim, dims->sim, mem->sim_solver, field, value);
-    }
-    else if (!strcmp(field, "cost_scaling_ptr"))
-    {
-        mem->cost_scaling_ptr = value;
-        sim->memory_set(sim, dims->sim, mem->sim_solver, field, value);
-    }
-    else if (!strcmp(field, "add_cost_hess_contribution_ptr"))
-    {
-        mem->add_cost_hess_contribution_ptr = value;
+        mem->cost_capsule = value;
     }
     else
     {
@@ -609,20 +476,6 @@ void ocp_nlp_dynamics_cont_memory_get(void *config_, void *dims_, void *mem_, co
     }
 
 }
-
-
-void ocp_nlp_dynamics_cont_memory_set_dyn_jac_p_global_ptr(struct blasfeo_dmat *dyn_jac_p_global, void *memory_)
-{
-    // ocp_nlp_dynamics_cont_memory *memory = memory_;
-    // memory->dyn_jac_p_global = dyn_jac_p_global;
-}
-
-void ocp_nlp_dynamics_cont_memory_set_jac_lag_stat_p_global_ptr(struct blasfeo_dmat *jac_lag_stat_p_global, void *memory_)
-{
-    // ocp_nlp_dynamics_cont_memory *memory = memory_;
-    // memory->jac_lag_stat_p_global = jac_lag_stat_p_global;
-}
-
 
 
 /************************************************
@@ -889,8 +742,8 @@ void ocp_nlp_dynamics_cont_update_qp_matrices(void *config_, void *dims_, void *
         // unpack d*_d2x
         blasfeo_pack_dmat(nx, nx, &work->sim_out->S_hess[0], nx+nu, &work->hess, nu, nu);
 
-        // Write hessian contribution
-        blasfeo_dgecp(nx+nu, nx+nu, &work->hess, 0, 0, mem->RSQrq, 0, 0);
+        // write hessian contribution as lower triangular
+        blasfeo_dtrcp_l(nx+nu, &work->hess, 0, 0, mem->RSQrq, 0, 0);
     }
 
     int cost_computation;
@@ -903,14 +756,21 @@ void ocp_nlp_dynamics_cont_update_qp_matrices(void *config_, void *dims_, void *
                             mem->sim_solver, "cost_hess", &cost_hess);
         // printf("dynamics: RSQrq before cost contribution\n");
         // blasfeo_print_exp_dmat(nx+nu, nx+nu, mem->RSQrq, 0, 0);
-        if (*mem->add_cost_hess_contribution_ptr)
+
+        ocp_nlp_cost_capsule *cost_capsule = mem->cost_capsule;
+        ocp_nlp_cost_config *cost_config = cost_capsule->config;
+        double cost_scaling;
+        cost_config->model_get(cost_capsule->config, cost_capsule->dims, cost_capsule->model, "scaling", &cost_scaling);
+        int add_cost_hess_contribution;
+        cost_config->opts_get(cost_config, cost_capsule->opts, "add_hess_contribution", &add_cost_hess_contribution);
+        if (add_cost_hess_contribution)
         {
             // Add hessian contribution
-            blasfeo_dgead(nx+nu, nx+nu, mem->cost_scaling_ptr[0], cost_hess, 0, 0, mem->RSQrq, 0, 0);
+            blasfeo_dgead(nx+nu, nx+nu, cost_scaling, cost_hess, 0, 0, mem->RSQrq, 0, 0);
         }
         else
         {
-            blasfeo_dgecpsc(nx+nu, nx+nu, mem->cost_scaling_ptr[0], cost_hess, 0, 0, mem->RSQrq, 0, 0);
+            blasfeo_dgecpsc(nx+nu, nx+nu, cost_scaling, cost_hess, 0, 0, mem->RSQrq, 0, 0);
         }
 
         // printf("dynamics: cost contribution\n");
@@ -1180,16 +1040,6 @@ void ocp_nlp_dynamics_cont_config_initialize_default(void *config_, int stage)
     config->memory_get_fun_ptr = &ocp_nlp_dynamics_cont_memory_get_fun_ptr;
     config->memory_get_adj_ptr = &ocp_nlp_dynamics_cont_memory_get_adj_ptr;
     config->memory_set = &ocp_nlp_dynamics_cont_memory_set;
-    config->memory_set_ux_ptr = &ocp_nlp_dynamics_cont_memory_set_ux_ptr;
-    config->memory_set_ux1_ptr = &ocp_nlp_dynamics_cont_memory_set_ux1_ptr;
-    config->memory_set_pi_ptr = &ocp_nlp_dynamics_cont_memory_set_pi_ptr;
-    config->memory_set_BAbt_ptr = &ocp_nlp_dynamics_cont_memory_set_BAbt_ptr;
-    config->memory_set_RSQrq_ptr = &ocp_nlp_dynamics_cont_memory_set_RSQrq_ptr;
-    config->memory_set_dzduxt_ptr = &ocp_nlp_dynamics_cont_memory_set_dzduxt_ptr;
-    config->memory_set_sim_guess_ptr = &ocp_nlp_dynamics_cont_memory_set_sim_guess_ptr;
-    config->memory_set_z_alg_ptr = &ocp_nlp_dynamics_cont_memory_set_z_alg_ptr;
-    config->memory_set_jac_lag_stat_p_global_ptr = &ocp_nlp_dynamics_cont_memory_set_jac_lag_stat_p_global_ptr;
-    config->memory_set_dyn_jac_p_global_ptr = &ocp_nlp_dynamics_cont_memory_set_dyn_jac_p_global_ptr;
     config->memory_get = &ocp_nlp_dynamics_cont_memory_get;
     config->workspace_calculate_size = &ocp_nlp_dynamics_cont_workspace_calculate_size;
     config->get_external_fun_workspace_requirement = &ocp_nlp_dynamics_cont_get_external_fun_workspace_requirement;

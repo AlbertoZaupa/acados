@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 
@@ -115,8 +93,7 @@ typedef struct
     struct blasfeo_dmat *RSQrq;         // pointer to RSQrq in qp_in
     struct blasfeo_dvec *z_alg;         // pointer to output z at t = 0
     bool *set_sim_guess;                 // indicate if initialization for integrator is set from outside
-    double *cost_scaling_ptr;  // pointer to cost scaling factor
-    int *add_cost_hess_contribution_ptr; // pointer to cost module option
+    void *cost_capsule;  // pointer to ocp_nlp_cost_capsule of the cost module
     struct blasfeo_dvec *sim_guess;     // initializations for integrator
     // struct blasfeo_dvec *z;             // pointer to (input) z in nlp_out at current stage
     struct blasfeo_dmat *dzduxt;        // pointer to dzdux transposed
@@ -134,16 +111,6 @@ void *ocp_nlp_dynamics_cont_memory_assign(void *config, void *dims, void *opts, 
 struct blasfeo_dvec *ocp_nlp_dynamics_cont_memory_get_fun_ptr(void *memory);
 //
 struct blasfeo_dvec *ocp_nlp_dynamics_cont_memory_get_adj_ptr(void *memory);
-//
-void ocp_nlp_dynamics_cont_memory_set_ux_ptr(struct blasfeo_dvec *ux, void *memory);
-//
-void ocp_nlp_dynamics_cont_memory_set_ux1_ptr(struct blasfeo_dvec *ux1, void *memory);
-//
-void ocp_nlp_dynamics_cont_memory_set_pi_ptr(struct blasfeo_dvec *pi, void *memory);
-//
-void ocp_nlp_dynamics_cont_memory_set_BAbt_ptr(struct blasfeo_dmat *BAbt, void *memory);
-//
-void ocp_nlp_dynamics_cont_memory_get_params_lag_grad(void *config, void *dims, void *opts, void *memory, int index, struct blasfeo_dvec *out, int offset);
 
 
 

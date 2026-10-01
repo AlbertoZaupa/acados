@@ -3,33 +3,10 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 from copy import deepcopy
-from typing import Tuple, Optional, Union
+from typing import Tuple, Union
 import casadi as ca
 import numpy as np
 
@@ -58,6 +35,7 @@ class AcadosCostConstraintEvaluator:
     """
 
     def __init__(self, ocp: AcadosOcp, with_parametric_bounds: bool = False):
+        # TODO this does not consider different constraints or costs for the initial state
         ocp.make_consistent()
 
         if with_parametric_bounds:
@@ -100,6 +78,7 @@ class AcadosCostConstraintEvaluator:
         )
 
         # constraints
+        # TODO use ocp.get_constraints_expression
         bu_expr = model.u[constraints.idxbu]
         bx_expr = model.x[constraints.idxbx]
         bx_expr_e = model.x[constraints.idxbx_e]
@@ -337,11 +316,11 @@ class AcadosCostConstraintEvaluator:
         # the cost on the first step is different in the OCP
         # TODO: this is not correct, since the cost on the first step might be different!
         step = 0
-        result = self.evaluate(acados_ocp_iterate.x_traj[0], acados_ocp_iterate.u_traj[0], step=step)
+        result = self.evaluate(acados_ocp_iterate.x[0], acados_ocp_iterate.u[0], step=step)
         cost += result['cost_without_slacks']
         step += 1
 
-        for x_traj, u_traj in zip(acados_ocp_iterate.x_traj[1:], acados_ocp_iterate.u_traj[1:]):
+        for x_traj, u_traj in zip(acados_ocp_iterate.x[1:], acados_ocp_iterate.u[1:]):
             result = self.evaluate(x_traj, u_traj, step=step)
             cost += result['cost']
             step += 1
@@ -351,11 +330,11 @@ class AcadosCostConstraintEvaluator:
         else:
             parameter_values = parameter_values
 
-        cost_fun_args = [acados_ocp_iterate.x_traj[-1], parameter_values, p_global_values]
+        cost_fun_args = [acados_ocp_iterate.x[-1], parameter_values, p_global_values]
         cost += self.terminal_cost_fun(*cost_fun_args).full()
 
         lower_violation_e, upper_violation_e, lower_slack_e, upper_slack_e = (
-            self.constraint_function_e(acados_ocp_iterate.x_traj[-1],
+            self.constraint_function_e(acados_ocp_iterate.x[-1],
                                        parameter_values,
                                        p_global_values))
 
@@ -396,6 +375,7 @@ def create_model_with_cost_state(ocp: AcadosOcp) -> Tuple[AcadosModel, np.ndarra
 
     Returns the augmented model and the parameter values of the given AcadosOcp.
     """
+    # TODO not sure if this is correct. Dont we need to check idxs* ?
 
     model = deepcopy(ocp.model)
     symbol = model.get_casadi_symbol()

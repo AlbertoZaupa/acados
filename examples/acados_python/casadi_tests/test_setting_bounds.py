@@ -101,8 +101,9 @@ def main(bu: bool = True):
 
     # solve with acados
     status = ocp_solver.solve()
-    acados_x = np.array([ocp_solver.get(i, "x") for i in range(N_horizon+1)])
-    acados_u = np.array([ocp_solver.get(i, "u") for i in range(N_horizon)])
+    acados_iterate = ocp_solver.get_iterate()
+    acados_x = np.array(acados_iterate.x)
+    acados_u = np.array(acados_iterate.u)
     lam = np.concatenate([ocp_solver.get(i, "lam") for i in range(N_horizon+1)])
     pi = np.concatenate([ocp_solver.get(i, "pi") for i in range(N_horizon)])
     result = ocp_solver.get_iterate()
@@ -124,24 +125,25 @@ def main(bu: bool = True):
             casadi_ocp_solver.constraints_set(i, "ubx", np.array([x_max_new, x_max_new]))
 
     casadi_ocp_solver.solve()
-    casadi_x = np.array([casadi_ocp_solver.get(i, "x") for i in range(N_horizon+1)])
-    casadi_u = np.array([casadi_ocp_solver.get(i, "u") for i in range(N_horizon)])
+    casadi_iterate = casadi_ocp_solver.get_iterate()
+    casadi_x = np.array(casadi_iterate.x)
+    casadi_u = np.array(casadi_iterate.u)
     lam_casadi = np.concatenate([casadi_ocp_solver.get(i, "lam") for i in range(N_horizon+1)])
     pi_casadi = np.concatenate([casadi_ocp_solver.get(i, "pi") for i in range(N_horizon)])
     result_casadi = casadi_ocp_solver.get_iterate()
 
     # evaluate difference
     diff_x = np.linalg.norm(casadi_x - acados_x)
-    assert np.allclose(casadi_x, acados_x, atol=1e-5, rtol=1e-5), f"x mismatch with error {diff_x}"
+    np.testing.assert_allclose(casadi_x, acados_x, atol=1e-5, rtol=1e-5), f"x mismatch with error {diff_x}"
     print(f"Difference between casadi and acados solution in x: {diff_x}")
     diff_u = np.linalg.norm(casadi_u - acados_u)
-    assert np.allclose(casadi_u, acados_u, atol=1e-5, rtol=1e-5), f"u mismatch with error {diff_u}"
+    np.testing.assert_allclose(casadi_u, acados_u, atol=1e-5, rtol=1e-5), f"u mismatch with error {diff_u}"
     print(f"Difference between casadi and acados solution in u: {diff_u}")
     diff_lam = np.linalg.norm(lam_casadi - lam)
-    assert np.allclose(lam_casadi, lam, atol=1e-5, rtol=1e-5), f"lam mismatch with error {diff_lam}"
+    np.testing.assert_allclose(lam_casadi, lam, atol=1e-5, rtol=1e-5), f"lam mismatch with error {diff_lam}"
     print(f"Difference between casadi and acados solution in lam: {diff_lam}")
     diff_pi = np.linalg.norm(pi_casadi - pi)
-    assert np.allclose(pi_casadi, pi, atol=1e-5, rtol=1e-5), f"pi mismatch with error {diff_pi}"
+    np.testing.assert_allclose(pi_casadi, pi, atol=1e-5, rtol=1e-5), f"pi mismatch with error {diff_pi}"
     print(f"Difference between casadi and acados solution in pi: {diff_pi}")
 
     print("Test passed for bu=",bu)

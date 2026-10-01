@@ -4,30 +4,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 import sys
 
 sys.path.insert(0, '../pendulum_on_cart/common')
@@ -119,6 +96,10 @@ def solve_ocp(cost_variant, num_stages):
     ocp.constraints.idxbu = np.array([0])
     ocp.constraints.x0 = np.array([0.0, np.pi, 0.0, 0.0, 0.0])
 
+    ocp.constraints.idxs_rev = np.array([0])
+    ocp.cost.Zl = ocp.cost.Zu = np.ones((1,))
+    ocp.cost.zl = ocp.cost.zu = np.ones((1,))
+
     # set options
     ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM'  # FULL_CONDENSING_QPOASES
     ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
@@ -137,9 +118,6 @@ def solve_ocp(cost_variant, num_stages):
     ocp_solver.options_set('qp_tau_min', 1e-10)
     ocp_solver.options_set('qp_mu0', 1e0)
 
-    simX = np.zeros((N + 1, nx+1))
-    simU = np.zeros((N, nu))
-
     print(80*'-')
     print(f'solve original code with N = {N} and Tf = {Tf} s:')
     status = ocp_solver.solve()
@@ -150,19 +128,26 @@ def solve_ocp(cost_variant, num_stages):
         raise Exception(f'acados returned status {status}.')
 
     # get solution
-    for i in range(N):
-        simX[i, :] = ocp_solver.get(i, "x")
-        simU[i, :] = ocp_solver.get(i, "u")
-    simX[N, :] = ocp_solver.get(N, "x")
+    iterate = ocp_solver.get_iterate()
 
     # compare cost and value of cost state
     cost_solver = ocp_solver.get_cost()
 
-    xN = simX[N, :nx]
-    terminal_cost = 0.5*xN @ ocp.cost.W_e @ xN
-    cost_state = simX[-1, -1] + terminal_cost
+    cost_solver_per_stage = np.sum(ocp_solver.get_cost(per_stage=True)).item()
 
-    abs_diff = np.abs(cost_solver - cost_state)
+    assert abs(cost_solver - cost_solver_per_stage) < TOL
+
+    # add terminal cost and slack contributions to cost state
+    cost_state = iterate.x[-1][-1]
+    xN = np.reshape(iterate.x[-1][:-1], (-1, 1))
+    terminal_cost = 0.5*xN.T @ ocp.cost.W_e @ xN
+    cost_state = cost_state + terminal_cost
+
+    for n in range(1, N):
+        sl = iterate.sl[n]
+        su = iterate.su[n]
+        cost_state += ocp.solver_options.cost_scaling[n] * (sl * ocp.cost.zl + 0.5 * sl**2 * ocp.cost.Zl + su * ocp.cost.zu + 0.5 * su**2 * ocp.cost.Zu).item()
+    abs_diff = np.abs(cost_solver - cost_state.item())
 
     print(f"\nComparing solver cost and cost state for {cost_variant=}, {num_stages=}:\n  {abs_diff=:.3e}")
     if abs_diff < TOL:
@@ -171,7 +156,7 @@ def solve_ocp(cost_variant, num_stages):
         raise Exception(f"  ERROR for {cost_variant=}, {num_stages=}:\n  {abs_diff=:.3e}\n")
 
     if PLOT:# plot but don't halt
-        plot_pendulum(np.linspace(0, Tf, N + 1), Fmax, simU, simX, latexify=False, plt_show=False, X_true_label=f'original: N={N}, Tf={Tf}')
+        plot_pendulum(np.linspace(0, Tf, N + 1), Fmax, np.asarray(iterate.u), np.asarray(iterate.x), latexify=False, plt_show=False, X_true_label=f'original: N={N}, Tf={Tf}')
 
 
 if __name__ == "__main__":

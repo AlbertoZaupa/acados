@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 from typing import Optional, Union
 import numpy as np
@@ -59,7 +36,7 @@ from .zoro_description import ZoroDescription
 from .casadi_function_generation import (
     GenerateContext,
     generate_c_code_conl_cost, generate_c_code_nls_cost, generate_c_code_external_cost,
-    generate_c_code_explicit_ode, generate_c_code_implicit_ode, generate_c_code_discrete_dynamics, generate_c_code_gnsf,
+    generate_c_code_explicit_ode, generate_c_code_explicit_ode_with_cost_state, generate_c_code_implicit_ode, generate_c_code_discrete_dynamics, generate_c_code_gnsf,
     generate_c_code_constraint
 )
 
@@ -651,11 +628,15 @@ class AcadosOcp:
             raise ValueError('inconsistent dimension ns_0, regarding idxs_rev_0, us_0.')
 
         # check cost penalty
-        for field in ("Zl_0", "Zu_0", "zl_0", "zu_0"):
-            dim = getattr(cost, field).shape[0]
-            if dim != ns_0:
-                raise Exception(f'Inconsistent size for field {field}, with dimension {dim}, \n\t'\
-                    + f'Detected ns_0 = {ns_0}.')
+        if ns_0 > 0:
+            for field in ("Zl_0", "Zu_0", "zl_0", "zu_0"):
+                slack_cost = getattr(cost, field)
+                if slack_cost is None:
+                    raise ValueError(f"Detected slack variables at initial node but {field} is None.")
+                dim = slack_cost.shape[0]
+                if dim != ns_0:
+                    raise Exception(f'Inconsistent size for field {field}, with dimension {dim}, \n\t'\
+                        + f'Detected ns_0 = {ns_0}.')
 
         dims.ns_0 = ns_0
 
@@ -723,7 +704,10 @@ class AcadosOcp:
                 raise ValueError("Fields cost.[zl_0, zu_0, Zl_0, Zu_0] are not provided and cannot be inferred from other fields.\n")
 
         for field in ("Zl_0", "Zu_0", "zl_0", "zu_0"):
-            dim = getattr(cost, field).shape[0]
+            slack_cost = getattr(cost, field)
+            if slack_cost is None:
+                raise ValueError(f"Detected slack variables at initial node but {field} is None.")
+            dim = slack_cost.shape[0]
             if dim != ns_0:
                 raise Exception(f'Inconsistent size for field {field}, with dimension {dim}, \n\t'\
                 + f'Detected ns_0 = {ns_0} = nsbu + nsg + nsh_0 + nsphi_0.\n\t'\
@@ -761,11 +745,12 @@ class AcadosOcp:
             raise ValueError('inconsistent dimension ns, regarding idxs_rev, us.')
 
         # check cost penalty
-        for field in ("Zl", "Zu", "zl", "zu"):
-            dim = getattr(cost, field).shape[0]
-            if dim != ns:
-                raise Exception(f'Inconsistent size for field {field}, with dimension {dim}, \n\t'\
-                    + f'Detected ns = {ns}.')
+        if ns > 0:
+            for field in ("Zl", "Zu", "zl", "zu"):
+                dim = getattr(cost, field).shape[0]
+                if dim != ns:
+                    raise Exception(f'Inconsistent size for field {field}, with dimension {dim}, \n\t'\
+                        + f'Detected ns = {ns}.')
 
         dims.ns = ns
 
@@ -895,11 +880,12 @@ class AcadosOcp:
             raise ValueError('inconsistent dimension ns_e, regarding idxs_rev_e, us_e.')
 
         # check cost penalty
-        for field in ("Zl_e", "Zu_e", "zl_e", "zu_e"):
-            dim = getattr(cost, field).shape[0]
-            if dim != ns_e:
-                raise Exception(f'Inconsistent size for field {field}, with dimension {dim}, \n\t'\
-                    + f'Detected ns_e = {ns_e}.')
+        if ns_e > 0:
+            for field in ("Zl_e", "Zu_e", "zl_e", "zu_e"):
+                dim = getattr(cost, field).shape[0]
+                if dim != ns_e:
+                    raise Exception(f'Inconsistent size for field {field}, with dimension {dim}, \n\t'\
+                        + f'Detected ns_e = {ns_e}.')
 
         dims.ns_e = ns_e
 
@@ -1080,6 +1066,65 @@ class AcadosOcp:
             assert not is_empty(self.model.disc_dyn_expr), "For the DISCRETE integrator, AcadosModel.disc_dyn_expr should be provided."
 
 
+    def reformulate_with_erk_with_cost(self):
+        model = self.model
+        cost = self.cost
+
+        if model.cost_expr_ext_cost != model.cost_expr_ext_cost_0:
+            raise NotImplementedError(
+                'Cost integration with ERK_WITH_COST requires the initial cost '
+                'to coincide with the path cost: model.cost_expr_ext_cost_0 must '
+                'equal model.cost_expr_ext_cost.')
+
+        # reformulate with cost_dynamics
+        model.f_expl_expr_with_cost = ca.vertcat(model.f_expl_expr, model.cost_expr_ext_cost)
+        # remove EXTERNAL cost formulation and reformulate with LLS
+        model.cost_expr_ext_cost = []
+        model.cost_expr_ext_cost_0 = []
+        cost.cost_type = 'LINEAR_LS'
+        cost.Vu = np.zeros((0, 0))
+        cost.Vx = np.zeros((0, 0))
+        cost.Vz = np.zeros((0, 0))
+        cost.W = np.zeros((0, 0))
+        cost.yref = np.zeros((0, ))
+
+        cost.cost_type_0 = 'LINEAR_LS'
+        cost.Vu_0 = np.zeros((0, 0))
+        cost.Vx_0 = np.zeros((0, 0))
+        cost.Vz_0 = np.zeros((0, 0))
+        cost.W_0 = np.zeros((0, 0))
+        cost.yref_0 = np.zeros((0, ))
+
+
+    def _make_consistent_cost_integration(self):
+        opts = self.solver_options
+        cost = self.cost
+
+        supports_cost_integration_irk = lambda type : type in ['NONLINEAR_LS', 'CONVEX_OVER_NONLINEAR']
+        if opts.integrator_type == 'IRK':
+            if any([not supports_cost_integration_irk(cost) for cost in [cost.cost_type_0, cost.cost_type]]):
+                raise ValueError(f'cost_discretization == INTEGRATOR with IRK only works with cost in ["NONLINEAR_LS", "CONVEX_OVER_NONLINEAR"] costs, got cost_type_0 {cost.cost_type_0}, cost_type {cost.cost_type}.')
+        elif opts.integrator_type == 'ERK':
+            if any(cost_type != 'EXTERNAL' for cost_type in [cost.cost_type_0, cost.cost_type]):
+                raise ValueError(f'cost_discretization INTEGRATOR with ERK only works with EXTERNAL cost, got cost_type_0 {cost.cost_type_0}, cost_type {cost.cost_type}.')
+            print('Cost integration for ERK with EXTERNAL cost is implemented via integrator_type `ERK_WITH_COST`, reformulating automatically.')
+            self.solver_options.integrator_type = 'ERK_WITH_COST'
+            self.reformulate_with_erk_with_cost()
+        elif opts.integrator_type == 'ERK_WITH_COST':
+            # already formulated, as done in reformulate_with_erk_with_cost
+            if cost.cost_type_0 != 'LINEAR_LS' or cost.cost_type != 'LINEAR_LS':
+                raise ValueError(f'integrator_type ERK_WITH_COST requires cost_type_0 and cost_type to be LINEAR_LS with ny = 0, got cost_type_0 {cost.cost_type_0}, cost_type {cost.cost_type}.')
+            if len(cost.yref_0) != 0 or len(cost.yref) != 0:
+                raise ValueError(f'integrator_type ERK_WITH_COST requires cost_type_0 and cost_type to be LINEAR_LS with ny = 0, got non-empty yref or yref_0.')
+            if opts.hessian_approx != "EXACT":
+                raise ValueError("integrator_type ERK_WITH_COST only works with hessian_approx == 'EXACT'")
+        else:
+            raise ValueError(f'integrator_type {opts.integrator_type} does not support cost_discretization == INTEGRATOR.')
+
+        if opts.nlp_solver_type == "SQP_WITH_FEASIBLE_QP":
+            raise ValueError('cost_discretization == INTEGRATOR is not compatible with SQP_WITH_FEASIBLE_QP yet.')
+
+
     def make_consistent(self, mocp_info: Optional[dict]=None, verbose: bool=True) -> None:
         """
         Detect dimensions, perform sanity checks
@@ -1171,13 +1216,8 @@ class AcadosOcp:
                 "OR the option to provide a symbolic custom Hessian approximation (see `cost_expr_ext_cost_custom_hess`).\n\n")
 
         # cost integration
-        if opts.N_horizon > 0:
-            supports_cost_integration = lambda type : type in ['NONLINEAR_LS', 'CONVEX_OVER_NONLINEAR']
-            if opts.cost_discretization == 'INTEGRATOR':
-                if any([not supports_cost_integration(cost) for cost in [cost.cost_type_0, cost.cost_type]]):
-                    raise ValueError(f'cost_discretization == INTEGRATOR only works with cost in ["NONLINEAR_LS", "CONVEX_OVER_NONLINEAR"] costs, got cost_type_0 {cost.cost_type_0}, cost_type {cost.cost_type}.')
-                if opts.nlp_solver_type == "SQP_WITH_FEASIBLE_QP":
-                    raise ValueError('cost_discretization == INTEGRATOR is not compatible with SQP_WITH_FEASIBLE_QP yet.')
+        if opts.N_horizon > 0 and opts.cost_discretization == 'INTEGRATOR':
+            self._make_consistent_cost_integration()
 
         ## constraints
         if opts.qp_solver == 'PARTIAL_CONDENSING_QPDUNES':
@@ -1526,7 +1566,7 @@ class AcadosOcp:
             template_list.append(('Makefile.in', 'Makefile'))
 
         # sim
-        if self.solver_options.N_horizon > 0 and self.solver_options.integrator_type != 'DISCRETE':
+        if self.solver_options.N_horizon > 0 and self.solver_options.integrator_type not in ['DISCRETE', 'ERK_WITH_COST']:
             template_list.append(('acados_sim_solver.in.c', f'acados_sim_solver_{self.name}.c'))
             template_list.append(('acados_sim_solver.in.h', f'acados_sim_solver_{self.name}.h'))
             template_list.append(('main_sim.in.c', f'main_sim_{self.name}.c'))
@@ -1690,6 +1730,8 @@ class AcadosOcp:
         if self.model.dyn_ext_fun_type == 'casadi':
             if self.solver_options.integrator_type == 'ERK':
                 generate_c_code_explicit_ode(context, model, model_dir)
+            elif self.solver_options.integrator_type == 'ERK_WITH_COST':
+                generate_c_code_explicit_ode_with_cost_state(context, model, model_dir)
             elif self.solver_options.integrator_type == 'IRK':
                 generate_c_code_implicit_ode(context, model, model_dir)
             elif self.solver_options.integrator_type == 'LIFTED_IRK':
@@ -2288,48 +2330,28 @@ class AcadosOcp:
             cost.W_e = np.zeros((0, 0))
             cost.W_0 = np.zeros((0, 0))
 
-        expr_bound_list = [
-            (model.x[constraints.idxbx], constraints.lbx, constraints.ubx),
-            (model.u[constraints.idxbu], constraints.lbu, constraints.ubu),
-            (model.con_h_expr, constraints.lh, constraints.uh),
-        ]
-
-        if casadi_length(model.con_phi_expr) > 0:
-            phi_o_r_expr = ca.substitute(model.con_phi_expr, model.con_r_in_phi, model.con_r_expr)
-            expr_bound_list.append((phi_o_r_expr, constraints.lphi, constraints.uphi))
-            # NOTE: for now, we don't exploit convex over nonlinear structure of phi
-
-        for constr_expr, lower_bound, upper_bound in expr_bound_list:
-            for i in range(casadi_length(constr_expr)):
-                self.formulate_constraint_as_L2_penalty(constr_expr[i], weight=1.0, upper_bound=upper_bound[i], lower_bound=lower_bound[i])
+        # formulate **path** constraints as L2 penalties
+        constr_expr, lower, upper = self.get_constraint_expression(stage = "path")
+        for i in range(casadi_length(constr_expr)):
+            self.formulate_constraint_as_L2_penalty(constr_expr[i], weight=1.0, upper_bound=upper[i], lower_bound=lower[i])
 
         # formulate **terminal** constraints as L2 penalties
-        expr_bound_list_e = [
-            (model.x[constraints.idxbx_e], constraints.lbx_e, constraints.ubx_e),
-            (model.con_h_expr_e, constraints.lh_e, constraints.uh_e),
-        ]
+        constr_expr, lower, upper = self.get_constraint_expression(stage = "terminal")
+        for i in range(casadi_length(constr_expr)):
+            self.formulate_constraint_as_L2_penalty(constr_expr[i], weight=1.0, upper_bound=upper[i], lower_bound=lower[i], constraint_type="terminal")
 
-        if casadi_length(model.con_phi_expr_e) > 0:
-            phi_o_r_expr_e = ca.substitute(model.con_phi_expr_e, model.con_r_in_phi_e, model.con_r_expr_e)
-            expr_bound_list_e.append((phi_o_r_expr_e, constraints.lphi_e, constraints.uphi_e))
-            # NOTE: for now, we don't exploit convex over nonlinear structure of phi
-
-        for constr_expr, lower_bound, upper_bound in expr_bound_list_e:
-            for i in range(casadi_length(constr_expr)):
-                self.formulate_constraint_as_L2_penalty(constr_expr[i], weight=1.0, upper_bound=upper_bound[i], lower_bound=lower_bound[i], constraint_type="terminal")
-
-        # Convert initial conditions to l2 penalty
-        # Expressions for control constraints on u
-        expr_bound_list_0 = [
-            (model.u[constraints.idxbu], constraints.lbu, constraints.ubu),
-            (model.con_h_expr_0, constraints.lh_0, constraints.uh_0),
-        ]
-
+        # formulate **initial** constraints as L2 penalties
         # initial state constraint
         if (keep_x0 or parametric_x0) and not constraints.has_x0:
             raise NotImplementedError("translate_to_feasibility_problem: options keep_x0, parametric_x0 not defined for problems without x0 constraints.")
         if parametric_x0 and keep_x0:
             raise NotImplementedError("translate_to_feasibility_problem: parametric_x0 and keep_x0 cannot both be True.")
+
+        # Expressions for control constraints on u
+        expr_bound_list_0 = [
+            (model.u[constraints.idxbu], constraints.lbu, constraints.ubu),
+            (model.con_h_expr_0, constraints.lh_0, constraints.uh_0),
+        ]
 
         if parametric_x0:
             symbol = model.get_casadi_symbol()
@@ -2411,12 +2433,9 @@ class AcadosOcp:
         nu = casadi_length(u)
         nz = casadi_length(z)
 
-        if stage_type == 'terminal':
-            expr_cost = model.cost_expr_ext_cost_e
-        elif stage_type == 'path':
-            expr_cost = model.cost_expr_ext_cost
-        elif stage_type == 'initial':
-            expr_cost = model.cost_expr_ext_cost_0
+        suffix = {"initial": "_0", "path": "", "terminal": "_e"}[stage_type]
+
+        expr_cost = getattr(model, f"cost_expr_ext_cost{suffix}")
 
         if verbose:
             print('--------------------------------------------------------------')
@@ -2508,32 +2527,20 @@ class AcadosOcp:
                 W = 2 * W
 
             # Extract output
+            setattr(cost, f"cost_type{suffix}", 'LINEAR_LS')
+            setattr(dims, f"ny{suffix}", ny)
+            setattr(cost, f"Vx{suffix}", Vx)
+            setattr(cost, f"W{suffix}", W)
+            setattr(cost, f"yref{suffix}", y_ref)
+
             if stage_type == 'terminal':
                 if np.any(Vu):
                     raise ValueError('Terminal cost term cannot depend on the control input (u)!')
                 if np.any(Vz):
                     raise ValueError('Terminal cost term cannot depend on the algebraic variables (z)!')
-                cost.cost_type_e = 'LINEAR_LS'
-                dims.ny_e = ny
-                cost.Vx_e = Vx
-                cost.W_e = W
-                cost.yref_e = y_ref
-            elif stage_type == 'path':
-                cost.cost_type = 'LINEAR_LS'
-                dims.ny = ny
-                cost.Vx = Vx
-                cost.Vu = Vu
-                cost.Vz = Vz
-                cost.W = W
-                cost.yref = y_ref
-            elif stage_type == 'initial':
-                cost.cost_type_0 = 'LINEAR_LS'
-                dims.ny_0 = ny
-                cost.Vx_0 = Vx
-                cost.Vu_0 = Vu
-                cost.Vz_0 = Vz
-                cost.W_0 = W
-                cost.yref_0 = y_ref
+            else:
+                setattr(cost, f"Vu{suffix}", Vu)
+                setattr(cost, f"Vz{suffix}", Vz)
 
             if verbose:
                 print('\n\nReformulated cost term in linear least squares form with:')
@@ -2549,15 +2556,12 @@ class AcadosOcp:
         else:
             if verbose:
                 print('\n\nCost function is not quadratic or includes parameters -> Using external cost\n\n')
-            if stage_type == 'terminal':
-                cost.cost_type_e = 'EXTERNAL'
-            elif stage_type == 'path':
-                cost.cost_type = 'EXTERNAL'
-            elif stage_type == 'initial':
-                cost.cost_type_0 = 'EXTERNAL'
+
+            setattr(cost, f"cost_type{suffix}", 'EXTERNAL')
 
         if verbose:
             print('--------------------------------------------------------------')
+
 
     def ensure_solution_sensitivities_available(self, parametric=True, forward=False, verbose=True) -> None:
         """
@@ -2616,6 +2620,76 @@ class AcadosOcp:
         if self.solver_options.qp_solver_ric_alg == 1:
             raise ValueError("Parametric sensitivities with square-root Riccati algorithm can result in degraded sensitivity results.\n",
                             "This algorithm can be safely applied if full Hessian is positive definite.")
+
+
+    def get_constraint_expression(self, stage: str):
+        """
+        Compute the constraint expression for a given stage.
+        The order is [bounds_u, bounds_x, g, h, phi].
+
+        :param stage: one of "initial", "path", "terminal"
+        """
+        suffix = {"initial": "_0", "path": "", "terminal": "_e"}[stage]
+
+        is_terminal = stage == "terminal"
+        constraint_expr = []
+        lower = []
+        upper = []
+
+        # bounds
+        if not is_terminal:
+            idxbu = getattr(self.constraints, f"idxbu{suffix}")
+            lbu = getattr(self.constraints, f"lbu{suffix}")
+            ubu = getattr(self.constraints, f"ubu{suffix}")
+            constraint_expr.append(self.model.u[idxbu])
+            lower.append(lbu)
+            upper.append(ubu)
+
+        idxbx = getattr(self.constraints, f"idxbx{suffix}")
+        lbx = getattr(self.constraints, f"lbx{suffix}")
+        ubx = getattr(self.constraints, f"ubx{suffix}")
+
+        constraint_expr.append(self.model.x[idxbx])
+        lower.append(lbx)
+        upper.append(ubx)
+
+        # linear constraints
+        if stage != "initial":
+            C_mat = getattr(self.constraints, f"C{suffix}")
+            D_mat = getattr(self.constraints, f"D{suffix}", None) # return None for terminal stage
+            lg = getattr(self.constraints, f"lg{suffix}")
+            ug = getattr(self.constraints, f"ug{suffix}")
+
+            if not is_empty(C_mat):
+                constraint_expr.append(C_mat @ self.model.x if D_mat is None else C_mat @ self.model.x + D_mat @ self.model.u)
+                lower.append(lg)
+                upper.append(ug)
+
+        # nonlinear constraints
+        h = getattr(self.model, f"con_h_expr{suffix}")
+        lh = getattr(self.constraints, f"lh{suffix}")
+        uh = getattr(self.constraints, f"uh{suffix}")
+
+        constraint_expr.append(h)
+        lower.append(lh)
+        upper.append(uh)
+
+        phi = getattr(self.model, f"con_phi_expr{suffix}")
+        if casadi_length(phi) > 0:
+            r_in_phi = getattr(self.model, f"con_r_in_phi{suffix}")
+            r_expr = getattr(self.model, f"con_r_expr{suffix}")
+            phi_o_r_expr = ca.substitute(phi, r_in_phi, r_expr)
+            lphi = getattr(self.constraints, f"lphi{suffix}")
+            uphi = getattr(self.constraints, f"uphi{suffix}")
+            constraint_expr.append(phi_o_r_expr)
+            lower.append(lphi)
+            upper.append(uphi)
+
+        constraint_expr = ca.vertcat(*constraint_expr)
+        lower = ca.vertcat(*lower).full()
+        upper = ca.vertcat(*upper).full()
+
+        return constraint_expr, lower, upper
 
 
     def _get_cost_expression(self, stage: str, yref: Optional[ca.SX] = None):
@@ -2712,6 +2786,64 @@ class AcadosOcp:
             lam=lam_traj,
         )
         return iterate
+
+    def reformulate_with_time_transformation(self, dt_as_control: bool = True, dt_min: float = 1e-6, dt_max: float = ACADOS_INFTY):
+        """
+        Perform a time transformation.
+        If dt_as_control is True, the time step dt is implemented as a control such that the time intervals might change for each node.
+        Otherwise, dt is implemented as a state with free initial state.
+        The new decision variable dt is appended to the state/control variable.
+        NOTE: The lower and upper bounds are enforced at all stages (also if dt is implemented as a state).
+        """
+        if not isinstance(dt_as_control, (bool, np.bool_)):
+            raise TypeError(f"dt_as_control must be a bool, got {type(dt_as_control)}.")
+        if not isinstance(dt_min, (int, float, np.number)) or not isinstance(dt_max, (int, float, np.number)):
+            raise TypeError("dt_min and dt_max must be real numbers.")
+        if not np.isfinite(dt_min) or dt_min < 0:
+            raise ValueError(f"dt_min must be finite and positive, got {dt_min}.")
+        if dt_max <= dt_min:
+            raise ValueError(f"dt_max must be greater than dt_min, got dt_min={dt_min}, dt_max={dt_max}.")
+        if not is_empty(self.model.disc_dyn_expr):
+            raise NotImplementedError("Time transformation is only supported for continuous-time dynamics.")
+
+        model = self.model
+        constraints = self.constraints
+        old_nx = casadi_length(model.x)
+        old_nu = casadi_length(model.u)
+        dt = self.model.get_casadi_symbol()("dt", 1, 1)
+
+        if dt_as_control:
+            model.u = ca.vertcat(model.u, dt)
+            constraints.idxbu = np.append(constraints.idxbu, old_nu)
+            constraints.lbu = np.append(constraints.lbu, dt_min)
+            constraints.ubu = np.append(constraints.ubu, dt_max)
+        else:
+            # Keep an existing x0 fixed for the original states, but leave dt free.
+            if constraints.has_x0:
+                constraints.remove_x0_elimination()
+
+            model.x = ca.vertcat(model.x, dt)
+            model.xdot = ca.vertcat(model.xdot, self.model.get_casadi_symbol()("dt_dot", 1, 1))
+            constraints.idxbx_0 = np.append(constraints.idxbx_0, old_nx)
+            constraints.lbx_0 = np.append(constraints.lbx_0, dt_min)
+            constraints.ubx_0 = np.append(constraints.ubx_0, dt_max)
+            constraints.idxbx = np.append(constraints.idxbx, old_nx)
+            constraints.lbx = np.append(constraints.lbx, dt_min)
+            constraints.ubx = np.append(constraints.ubx, dt_max)
+            constraints.idxbx_e = np.append(constraints.idxbx_e, old_nx)
+            constraints.lbx_e = np.append(constraints.lbx_e, dt_min)
+            constraints.ubx_e = np.append(constraints.ubx_e, dt_max)
+
+        if not is_empty(model.f_expl_expr):
+            transformed_f_expl = dt * model.f_expl_expr
+            model.f_expl_expr = ca.vertcat(transformed_f_expl, 0) if not dt_as_control else transformed_f_expl
+
+        if not is_empty(model.f_impl_expr):
+            warnings.warn("Automatic time transformation with implicit models might lead to unnecessary complex CasADi expressions. Please check or reformulate manually.")
+            transformed_f_impl = ca.simplify(dt * ca.substitute(model.f_impl_expr, model.xdot, model.xdot / dt))
+            model.f_impl_expr = ca.vertcat(transformed_f_impl, model.xdot[-1]) if not dt_as_control else transformed_f_impl
+
+        self.solver_options.tf = self.solver_options.N_horizon
 
 
     @classmethod

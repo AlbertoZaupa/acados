@@ -26,18 +26,38 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
-
 %
 
+function penalty = get_quadratic_penalty_expression(h_expr, lh, uh, Z_l, Z_u)
+    % Returns a CasADi expression corresponding to a quadratic penalty on the
+    % constraint violation with quadratic weight diag(Z_l) for lower bound
+    % violations and diag(Z_u) for upper bound violations.
+    %
+    % Inputs:
+    %   h_expr : CasADi SX/MX expression of size n x 1 or 1 x n
+    %   lh     : lower bound vector of length n
+    %   uh     : upper bound vector of length n
+    %   Z_l    : lower-bound quadratic penalty weights, length n
+    %   Z_u    : upper-bound quadratic penalty weights, length n
 
-example_dir = fileparts(which('acados_env_variables_windows'));
+    import casadi.*
+    if ~(isa(h_expr, 'casadi.SX') || isa(h_expr, 'casadi.MX'))
+        error('h_expr must be a CasADi SX or MX expression.');
+    end
 
-acados_dir = fullfile(example_dir, '..', '..');
-casadi_dir = fullfile(acados_dir, 'external', 'casadi-matlab');
-matlab_interface_dir = fullfile(acados_dir, 'interfaces', 'acados_matlab_octave');
+    h_expr = h_expr(:);
+    lh = lh(:);
+    uh = uh(:);
+    Z_l = Z_l(:);
+    Z_u = Z_u(:);
 
-addpath(matlab_interface_dir);
-addpath(casadi_dir);
+    if ~(numel(h_expr) == numel(lh) && numel(h_expr) == numel(uh) ...
+            && numel(h_expr) == numel(Z_l) && numel(h_expr) == numel(Z_u))
+        error('lh, uh, Z_l, and Z_u must all have the same length as h_expr.');
+    end
 
-setenv('ACADOS_INSTALL_DIR', acados_dir);
-setenv('ENV_RUN', 'true');
+    lower_violation = fmax(lh - h_expr, 0);
+    upper_violation = fmax(h_expr - uh, 0);
+
+    penalty = 0.5 * sum(Z_l .* lower_violation.^2 + Z_u .* upper_violation.^2);
+end

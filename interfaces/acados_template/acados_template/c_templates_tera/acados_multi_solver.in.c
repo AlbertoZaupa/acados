@@ -3,29 +3,7 @@
  *
  * This file is part of acados.
  *
- * The 2-Clause BSD License
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.;
+ * Licensed under the 2-Clause BSD License.
  */
 
 {% set dims_0 = phases_dims | first %}
@@ -218,6 +196,9 @@ void {{ name }}_acados_create_set_plan(ocp_nlp_plan_t* nlp_solver_plan, const in
         nlp_solver_plan->nlp_dynamics[i] = DISCRETE_MODEL;
         // discrete dynamics does not need sim solver option, this field is ignored
         nlp_solver_plan->sim_solver_plan[i].sim_solver = INVALID_SIM_SOLVER;
+      {%- elif mocp_opts.integrator_type[jj] == "ERK_WITH_COST" %}
+        nlp_solver_plan->nlp_dynamics[i] = CONTINUOUS_MODEL_WITH_COST;
+        nlp_solver_plan->sim_solver_plan[i].sim_solver = ERK;
       {%- else %}
         nlp_solver_plan->nlp_dynamics[i] = CONTINUOUS_MODEL;
         nlp_solver_plan->sim_solver_plan[i].sim_solver = {{ mocp_opts.integrator_type[jj] }};
@@ -415,12 +396,6 @@ ocp_nlp_dims* {{ name }}_acados_create_setup_dimensions({{ name }}_solver_capsul
         ocp_nlp_dims_set_dynamics(nlp_config, nlp_dims, i, "gnsf_nuhat", &gnsf_nuhat);
     }
   {%- endif %}
-
-  {%- if mocp_opts.cost_discretization[jj] == "INTEGRATOR" %}
-    for (int i = {{ start_idx[jj] }}; i < {{ end_idx[jj] }}; i++)
-        ocp_nlp_dims_set_dynamics(nlp_config, nlp_dims, i, "ny", &ny[i]);
-  {%- endif %}
-
 {%- endfor %}{# phases loop !#}
 
 
@@ -590,7 +565,7 @@ void {{ name }}_acados_create_setup_functions({{ name }}_solver_capsule* capsule
     }
 {%- endif %}
 
-{% if mocp_opts.integrator_type[jj] == "ERK" %}
+{% if mocp_opts.integrator_type[jj] is starting_with("ERK") %}
     // explicit ode
     capsule->expl_vde_forw_{{ jj }} = (external_function_external_param_casadi *) malloc(sizeof(external_function_external_param_casadi)*n_path);
     for (int i = 0; i < n_path; i++) {
@@ -2160,15 +2135,6 @@ void {{ name }}_acados_create_setup_nlp_in({{ name }}_solver_capsule* capsule, i
     ocp_nlp_cost_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, 0, "ext_cost_fun_jac_hess", &capsule->ext_cost_0_fun_jac_hess);
 {%- endif %}
 
-{%- if mocp_opts.cost_discretization[0] == "INTEGRATOR" %}
-  {%- if cost[0].cost_type_0 == "NONLINEAR_LS" %}
-    ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, 0, "nls_y_fun_jac", &capsule->cost_y_0_fun_jac_ut_xt);
-    ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, 0, "nls_y_fun", &capsule->cost_y_0_fun);
-  {%- elif cost[0].cost_type_0 == "CONVEX_OVER_NONLINEAR" %}
-    ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, 0, "conl_cost_fun", &capsule->conl_cost_0_fun);
-    ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, 0, "conl_cost_fun_jac_hess", &capsule->conl_cost_0_fun_jac_hess);
-  {%- endif %}
-{%- endif %}
 
 {% if dims_0.nh_0 > 0 %}
     // set up nonlinear constraints for first stage
@@ -2206,7 +2172,7 @@ void {{ name }}_acados_create_setup_nlp_in({{ name }}_solver_capsule* capsule, i
     for (int i = {{ start_idx[jj] }}; i < {{ end_idx[jj] }}; i++)
     {
         i_fun = i - {{ start_idx[jj] }};
-    {%- if mocp_opts.integrator_type[jj] == "ERK" %}
+    {%- if mocp_opts.integrator_type[jj] is starting_with("ERK") %}
         ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i, "expl_vde_forw", &capsule->expl_vde_forw_{{ jj }}[i_fun]);
         ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i, "expl_vde_adj", &capsule->expl_vde_adj_{{ jj }}[i_fun]);
         ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i, "expl_ode_fun", &capsule->expl_ode_fun_{{ jj }}[i_fun]);
@@ -2218,7 +2184,7 @@ void {{ name }}_acados_create_setup_nlp_in({{ name }}_solver_capsule* capsule, i
         ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i,
                                    "impl_dae_fun_jac_x_xdot_z", &capsule->impl_dae_fun_jac_x_xdot_z_{{ jj }}[i_fun]);
         ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i,
-                                   "impl_dae_jac_x_xdot_u", &capsule->impl_dae_jac_x_xdot_u_z_{{ jj }}[i_fun]);
+                                   "impl_dae_jac_x_xdot_u_z", &capsule->impl_dae_jac_x_xdot_u_z_{{ jj }}[i_fun]);
         {%- if solver_options.hessian_approx == "EXACT" %}
         ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i, "impl_dae_hess", &capsule->impl_dae_hess_{{ jj }}[i_fun]);
         {%- endif %}
@@ -2278,21 +2244,6 @@ void {{ name }}_acados_create_setup_nlp_in({{ name }}_solver_capsule* capsule, i
     }
 {%- endif %}
 
-
-
-{%- if mocp_opts.cost_discretization[jj] == "INTEGRATOR" %}
-    for (int i = {{ cost_start_idx[jj] }}; i < {{ end_idx[jj] }}; i++)
-    {
-        i_fun = i - {{ cost_start_idx[jj] }};
-  {%- if cost[jj].cost_type == "NONLINEAR_LS" %}
-        ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i, "nls_y_fun_jac", &capsule->cost_y_fun_jac_ut_xt_{{ jj }}[i_fun]);
-        ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i, "nls_y_fun", &capsule->cost_y_fun_{{ jj }}[i_fun]);
-  {%- elif cost[jj].cost_type == "CONVEX_OVER_NONLINEAR" %}
-        ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i, "conl_cost_fun", &capsule->conl_cost_fun_{{ jj }}[i_fun]);
-        ocp_nlp_dynamics_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i, "conl_cost_fun_jac_hess", &capsule->conl_cost_fun_jac_hess_{{ jj }}[i_fun]);
-  {%- endif %}
-    }
-{%- endif %}
 
     /**** Constraints phase {{ jj }} ****/
 
@@ -3193,7 +3144,7 @@ int {{ name }}_acados_free({{ name }}_solver_capsule* capsule)
     free(capsule->impl_dae_fun_{{ jj }});
     free(capsule->impl_dae_fun_jac_x_xdot_u_{{ jj }});
 
-{%- elif mocp_opts.integrator_type[jj] == "ERK" %}
+{%- elif mocp_opts.integrator_type[jj] is starting_with("ERK") %}
     for (int i_fun = 0; i_fun < {{ end_idx[jj] - start_idx[jj] }}; i_fun++)
     {
         external_function_external_param_casadi_free(&capsule->expl_vde_forw_{{ jj }}[i_fun]);

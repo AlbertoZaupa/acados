@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 from acados_template import AcadosOcp, AcadosOcpOptions, AcadosOcpSolver, ACADOS_INFTY
 import numpy as np
@@ -80,26 +57,26 @@ def feasible_qp_index_test(soften_obstacle, soften_terminal, soften_controls, N,
 
         # Initial stage
         if i == 0:
-            assert np.allclose(idxb, np.arange(dims.nbx_0 + dims.nbu)) , f"We should have {dims.nbx} bounds on x and u, but got {len(idxb)}"
+            np.testing.assert_allclose(idxb, np.arange(dims.nbx_0 + dims.nbu), err_msg=f"We should have {dims.nbx} bounds on x and u, but got {len(idxb)}")
 
             if not soften_controls:
-                assert np.allclose(idxs,np.arange(0)), f"i=0, NOT soften_controls: The initial condition should have 0 slacks, got {len(idxs)}!"
+                np.testing.assert_allclose(idxs,np.arange(0), err_msg=f"i=0, NOT soften_controls: The initial condition should have 0 slacks, got {len(idxs)}!")
             else:
-                assert np.allclose(idxs, np.arange(dims.nbu)), f"i=0, soften_controls: The initial stage should have slack indices {np.arange(dims.nbu)} slacks, got {idxs})!"
+                np.testing.assert_allclose(idxs, np.arange(dims.nbu), err_msg=f"i=0, soften_controls: The initial stage should have slack indices {np.arange(dims.nbu)} slacks, got {idxs})!")
 
         if i > 0 and i < N:
-            assert np.allclose(idxb, np.arange(dims.nbu)), f"We should have {dims.nbu} indices for bounds on u, but got {len(idxb)}"
+            np.testing.assert_allclose(idxb, np.arange(dims.nbu), err_msg=f"We should have {dims.nbu} indices for bounds on u, but got {len(idxb)}")
 
             if not soften_controls:
-                assert np.allclose(idxs, np.arange(dims.nbx + dims.nbu, dims.nbx + dims.nbu + dims.nh)), f"i=0, NOT soften_controls: The initial condition should have {dims.nh} slacks, got {len(idxs)}!"
+                np.testing.assert_allclose(idxs, np.arange(dims.nbx + dims.nbu, dims.nbx + dims.nbu + dims.nh))
             else:
-                assert np.allclose(idxs, np.arange(dims.nbx + dims.nbu + dims.nh)), f"i=0: soften_controls: The initial condition should have {dims.nh + dims.nbu} slacks, got {len(idxs)}!"
+                np.testing.assert_allclose(idxs, np.arange(dims.nbx + dims.nbu + dims.nh), err_msg=f"i=0: soften_controls: The initial condition should have {dims.nh + dims.nbu} slacks, got {len(idxs)}!")
 
         # TODO: rework here!
         # if not soften_controls and not soften_obstacle and soften_terminal:
         if i == N:
             # We slack the obstacle constraint and the terminal constraints
-            assert np.allclose(idxs, np.arange(dims.nh_e + dims.nbx_e)), f"i=N+1: Everything should be slacked"
+            np.testing.assert_allclose(idxs, np.arange(dims.nh_e + dims.nbx_e)), f"i=N+1: Everything should be slacked"
 
 def create_solver_opts(N=4, Tf=2, nlp_solver_type = 'SQP_WITH_FEASIBLE_QP', allow_switching_modes=True,
                        timeout_max_time=0.0):
@@ -265,7 +242,7 @@ def standard_test(ocp: AcadosOcp, ocp_solver: AcadosOcpSolver, soften_obstacle: 
         feasible_qp_index_test(soften_obstacle, soften_terminal, soften_controls, N, ocp_solver)
 
     # get solution
-    sol_X = np.array([ocp_solver.get(i,"x") for i in range(N+1)])
+    sol_X = np.array(ocp_solver.get_iterate().x)
 
     # print summary
     print(f"cost function value = {ocp_solver.get_cost()} after {sqp_iter} SQP iterations")

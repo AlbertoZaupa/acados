@@ -3,30 +3,7 @@
 #
 # This file is part of acados.
 #
-# The 2-Clause BSD License
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice,
-# this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.;
-#
+# Licensed under the 2-Clause BSD License.
 
 from typing import Union, List, Optional
 
@@ -241,6 +218,8 @@ def generate_c_code_discrete_dynamics(context: GenerateContext, model: AcadosMod
             hess_ux = ca.jacobian(adj_ux, ux, {"symmetric": is_casadi_SX(x)})
         else:
             hess_ux = model.disc_dyn_custom_hess_ux_expr
+        # lower triangular is sufficient
+        hess_ux = ca.tril(hess_ux)
         fun_name = model.name + '_dyn_disc_phi_fun_jac_hess'
         context.add_function_definition(fun_name, [x, u, pi, p], [phi, jac_ux.T, hess_ux], model_dir, 'dyn')
 
@@ -270,24 +249,22 @@ def generate_c_code_discrete_dynamics(context: GenerateContext, model: AcadosMod
     return
 
 
-
-def generate_c_code_explicit_ode(context: GenerateContext, model: AcadosModel, model_dir: str):
+def _add_explicit_ode_function_definitions(context: GenerateContext,
+                                           model_name: str,
+                                           x,
+                                           u,
+                                           p,
+                                           f_expl,
+                                           model_dir: str):
     generate_hess = context.opts.generate_hess
     sens_forw_p = context.opts.sens_forw_p
-
-    # load model
-    x = model.x
-    u = model.u
-    p = model.p
-    f_expl = model.f_expl_expr
 
     nx = x.size()[0]
     nu = u.size()[0]
     np = casadi_length(p)
 
-    symbol = model.get_casadi_symbol()
+    symbol = ca.SX.sym if is_casadi_SX(x) else ca.MX.sym
 
-    # set up expressions
     Sx = symbol('Sx', nx, nx)
     Su = symbol('Su', nx, nu)
     lambdaX = symbol('lambdaX', nx, 1)
@@ -297,35 +274,43 @@ def generate_c_code_explicit_ode(context: GenerateContext, model: AcadosModel, m
     adj = ca.jtimes(f_expl, ca.vertcat(x, u), lambdaX, True)
 
     if generate_hess:
-        S_forw = ca.vertcat(ca.horzcat(Sx, Su), ca.horzcat(ca.DM.zeros(nu,nx), ca.DM.eye(nu)))
-        hess = ca.mtimes(ca.transpose(S_forw),ca.jtimes(adj, ca.vertcat(x,u), S_forw))
-        hess2 = []
-        for j in range(nx+nu):
-            for i in range(j,nx+nu):
-                hess2 = ca.vertcat(hess2, hess[i,j])
+        S_forw = ca.vertcat(ca.horzcat(Sx, Su), ca.horzcat(ca.DM.zeros(nu, nx), ca.DM.eye(nu)))
+        hess = ca.mtimes(ca.transpose(S_forw), ca.jtimes(adj, ca.vertcat(x, u), S_forw))
+        # vectorized lower triangular Hessian
+        hess_vec = hess[hess.sparsity().makeDense()[0].get_lower()]
 
-    # add to context
-    fun_name = model.name + '_expl_ode_fun'
+    fun_name = model_name + '_expl_ode_fun'
     context.add_function_definition(fun_name, [x, u, p], [f_expl], model_dir, 'dyn')
 
-    fun_name = model.name + '_expl_vde_forw'
+    fun_name = model_name + '_expl_vde_forw'
     context.add_function_definition(fun_name, [x, Sx, Su, u, p], [f_expl, vdeX, vdeU], model_dir, 'dyn')
 
-    fun_name = model.name + '_expl_vde_adj'
+    fun_name = model_name + '_expl_vde_adj'
     context.add_function_definition(fun_name, [x, lambdaX, u, p], [adj], model_dir, 'dyn')
 
     if generate_hess:
-        fun_name = model.name + '_expl_ode_hess'
-        context.add_function_definition(fun_name, [x, Sx, Su, lambdaX, u, p], [adj, hess2], model_dir, 'dyn')
+        fun_name = model_name + '_expl_ode_hess'
+        context.add_function_definition(fun_name, [x, Sx, Su, lambdaX, u, p], [adj, hess_vec], model_dir, 'dyn')
 
-    # param-direction forward VDE
     if sens_forw_p:
         Sp = symbol('Sp', nx, np)
-        vdeP = ca.jacobian(f_expl, p) + ca.jtimes(f_expl, x, Sp)   # f_p + A*Sp
-        fun_name = model.name + '_expl_vde_forw_p'
+        vdeP = ca.jacobian(f_expl, p) + ca.jtimes(f_expl, x, Sp)
+        fun_name = model_name + '_expl_vde_forw_p'
         context.add_function_definition(fun_name, [x, Sp, u, p], [vdeP], model_dir, 'dyn')
 
+
+def generate_c_code_explicit_ode_with_cost_state(context: GenerateContext, model: AcadosModel, model_dir: str):
+    symbol = model.get_casadi_symbol()
+    cost_state = symbol('cost_state')
+    x_with_cost = ca.vertcat(model.x, cost_state)
+
+    _add_explicit_ode_function_definitions(context, model.name, x_with_cost, model.u, model.p, model.f_expl_expr_with_cost, model_dir)
+
     return
+
+
+def generate_c_code_explicit_ode(context: GenerateContext, model: AcadosModel, model_dir: str):
+    _add_explicit_ode_function_definitions(context, model.name, model.x, model.u, model.p, model.f_expl_expr, model_dir)
 
 
 def generate_c_code_implicit_ode(context: GenerateContext, model: AcadosModel, model_dir: str):
@@ -541,6 +526,9 @@ def generate_c_code_external_cost(context: GenerateContext, model: AcadosModel, 
     if not is_empty(custom_hess):
         hess_ux = custom_hess
 
+    # lower triangular is sufficient
+    hess_ux = ca.tril(hess_ux)
+
     cost_dir = os.path.abspath(os.path.join(opts.code_export_directory, f'{model.name}_cost'))
 
     context.add_function_definition(fun_name, [x, u, z, p], [ext_cost], cost_dir, 'cost')
@@ -610,7 +598,8 @@ def generate_c_code_nls_cost(context: GenerateContext, model: AcadosModel, stage
         y_hess = 0
     else:
         y_adj = ca.jtimes(y_expr, ca.vertcat(u, x), y, True)
-        y_hess = ca.jacobian(y_adj, ca.vertcat(u, x), {"symmetric": is_casadi_SX(x)})
+        if opts.generate_hess:
+            y_hess = ca.jacobian(y_adj, ca.vertcat(u, x), {"symmetric": is_casadi_SX(x)})
 
     ## generate C code
     suffix_name = '_fun'
@@ -621,9 +610,10 @@ def generate_c_code_nls_cost(context: GenerateContext, model: AcadosModel, stage
     fun_name = model.name + middle_name + suffix_name
     context.add_function_definition(fun_name, [x, u, z, t, p], [ y_expr, cost_jac_expr, dy_dz ], cost_dir, 'cost')
 
-    suffix_name = '_hess'
-    fun_name = model.name + middle_name + suffix_name
-    context.add_function_definition(fun_name, [x, u, z, y, t, p], [ y_hess ], cost_dir, 'cost')
+    if opts.generate_hess:
+        suffix_name = '_hess'
+        fun_name = model.name + middle_name + suffix_name
+        context.add_function_definition(fun_name, [x, u, z, y, t, p], [ y_hess ], cost_dir, 'cost')
 
     return
 
@@ -697,6 +687,8 @@ def generate_c_code_conl_cost(context: GenerateContext, model: AcadosModel, stag
     outer_hess_fun = ca.Function('outer_hess', [res_expr, t, p, p_global], [hess])
     outer_hess_expr = outer_hess_fun(inner_expr, t, p, p_global)
     outer_hess_is_diag = outer_hess_expr.sparsity().is_diag()
+    # lower triangular is sufficient
+    outer_hess_expr = ca.tril(outer_hess_expr)
 
     # if residual dimension <= 4, do not exploit diagonal structure
     if casadi_length(res_expr) <= 4:
@@ -796,6 +788,8 @@ def generate_c_code_constraint(context: GenerateContext, model: AcadosModel, con
             adj_ux = ca.jtimes(con_h_expr, ca.vertcat(u, x), lam_h, True)
             # hessian
             hess_ux = ca.jacobian(adj_ux, ca.vertcat(u, x), {"symmetric": is_casadi_SX(x)})
+            # lower triangular is sufficient
+            hess_ux = ca.tril(hess_ux)
 
             adj_z = ca.jtimes(con_h_expr, z, lam_h, True)
             hess_z = ca.jacobian(adj_z, z, {"symmetric": is_casadi_SX(x)})
@@ -875,6 +869,7 @@ def generate_c_code_constraint(context: GenerateContext, model: AcadosModel, con
         phi_jac_x = ca.jacobian(con_phi_expr_x_u_z, x)
         phi_jac_z = ca.jacobian(con_phi_expr_x_u_z, z)
 
+        # the implementation in the acados core needs the full Hessian!
         hess = ca.vertcat(*[ca.hessian(con_phi_expr[i], r)[0] for i in range(nphi)])
         hess = ca.substitute(hess, r, con_r_expr)
 
