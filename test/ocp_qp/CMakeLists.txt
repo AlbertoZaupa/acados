@@ -39,3 +39,8 @@
 # )
 
 # add_library(ocp_qp_gen OBJECT ocp_qp.generated)
+if(ACADOS_WITH_DAOCP)
+    add_executable(test_daocp test_daocp.c)
+    target_link_libraries(test_daocp acados daocp hpipm blasfeo m)
+    add_test(NAME daocp_wrapper COMMAND test_daocp)
+endif()

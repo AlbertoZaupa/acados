@@ -58,8 +58,7 @@ typedef struct ocp_qp_daocp_memory_
     daocp_qp qp;
     daocp_sol sol;
     void* workspace;
-    double* equality_elimination_alphas;
-    u32* equality_elimination_pivots;
+    // All hard input equalities, both explicit and automatically detected.
     u32** detected_input_equalities;
     u32* num_detected_input_equalities;
     double time_qp_solver_call;
@@ -85,6 +84,10 @@ void ocp_qp_daocp_memory_get(void *config, void *mem_, const char *field, void *
 //
 acados_size_t ocp_qp_daocp_workspace_calculate_size(void *config, void *dims, void *opts_);
 //
+/* Soft constraints require independent slacks with Zl == Zu > 0,
+ * zl == zu >= 0, zero slack lower bounds and ordered, unmasked bounds.
+ * Initial-state fixing bounds must be hard. Soft QPs reset the active set.
+ * Primal slacks are returned; pi and lam are zero placeholders. */
 int ocp_qp_daocp(void *config, void *qp_in, void *qp_out, void *opts_, void *mem_, void *work_);
 //
 void ocp_qp_daocp_memory_reset(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, void *work_);
