@@ -195,7 +195,7 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     u32 nin = 0;
     u32 nb_tot = 0;
     for (u32 t=0; t<=N; ++t) {
-        u32 ne_capacity_t = nge[t]+nbu[t]+nbxe[t]*(t>0 ? 1 : 0);
+        u32 ne_capacity_t = ng[t]+nbu[t]+nbx[t]*(t>0 ? 1 : 0);
         size += 2*nb[t]*sizeof(f64); // lbu/x[t], ubu/x[t]
         size += 2*nb[t]*sizeof(f64); // lbu/x_wrk[t], ubu/x_wrk[t]
         size += nb[t]*sizeof(u32); // idxbu[t]
@@ -333,9 +333,11 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     mem->nbue = (u32*) (c_ptr += (N+1)*sizeof(u32));
     mem->nbxe = (u32*) (c_ptr += N*sizeof(u32));
     mem->nge = (u32*) (c_ptr += (N+1)*sizeof(u32));
-    mem->idxbue = (u32*) (c_ptr += (N+1)*sizeof(u32*));
-    mem->idxbxe = (u32**) (c_ptr += N*sizeof(u32**));
-    mem->idxge = (u32**) (c_ptr += (N+1)*sizeof(u32**));
+    c_ptr += (N+1)*sizeof(u32);
+    align_char_to(8, &c_ptr);
+    mem->idxbue = (u32**) c_ptr;
+    mem->idxbxe = (u32**) (c_ptr += N*sizeof(u32*));
+    mem->idxge = (u32**) (c_ptr += (N+1)*sizeof(u32*));
     c_ptr += (N+1)*sizeof(u32**);
     c_ptr = assign_ptr_vec(mem->idxbue, c_ptr, nbu, 0, 0, sizeof(u32), N);
     mem->idxbxe[0] = 0;
@@ -383,23 +385,23 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     c_ptr = assign_ptr_vec(wrk->lg_wrk, c_ptr, ng, 0, 0, sizeof(f64), N+1);
     c_ptr = assign_ptr_vec(mem->qp.cu, c_ptr, ng, 0, 0, sizeof(f64), N+1);
     c_ptr = assign_ptr_vec(wrk->ug_wrk, c_ptr, ng, 0, 0, sizeof(f64), N+1);
-    mem->qp.d[0] = (f64*) c_ptr; c_ptr += (nbu[0]+nge[0])*sizeof(f64);
+    mem->qp.d[0] = (f64*) c_ptr; c_ptr += (nbu[0]+ng[0])*sizeof(f64);
     for (u32 t=1; t<=N; ++t) {
         mem->qp.d[t] = (f64*) c_ptr;
-        c_ptr += (nbu[t]+nbxe[t]+nge[t])*sizeof(f64);
+        c_ptr += (nbu[t]+nbx[t]+ng[t])*sizeof(f64);
     }
     c_ptr = assign_ptr_mat(mem->qp.Cu, c_ptr, ng, 0, 0, 0, nu, sizeof(f64), N);
     mem->qp.Cx[0]=0; c_ptr = assign_ptr_mat(mem->qp.Cx+1, c_ptr, ng+1, 0, 0, 0, nx+1, sizeof(f64), N);
-    mem->qp.Du[0] = (f64*) c_ptr; c_ptr += (nge[0]+nbu[0])*nu[0]*sizeof(f64);
+    mem->qp.Du[0] = (f64*) c_ptr; c_ptr += (ng[0]+nbu[0])*nu[0]*sizeof(f64);
     for (u32 t=1; t<N; ++t) {
         mem->qp.Du[t] = (f64*) c_ptr;
-        c_ptr += (nge[t]+nbu[t]+nbxe[t])*nu[t]*sizeof(f64);
+        c_ptr += (ng[t]+nbu[t]+nbx[t])*nu[t]*sizeof(f64);
     }
     mem->qp.Du[N] = (f64*) c_ptr;
-    mem->qp.Dx[0]= (f64*) c_ptr; c_ptr += (nge[0]+nbu[0])*nx[0]*sizeof(f64);
+    mem->qp.Dx[0]= (f64*) c_ptr; c_ptr += (ng[0]+nbu[0])*nx[0]*sizeof(f64);
     for (u32 t=1; t<=N; ++t) {
         mem->qp.Dx[t] = (f64*) c_ptr;
-        c_ptr += (nge[t]+nbu[t]+nbxe[t])*nx[t]*sizeof(f64);
+        c_ptr += (ng[t]+nbu[t]+nbx[t])*nx[t]*sizeof(f64);
     }
 
     // One pair of penalties per constraint, shared by both bounds.
@@ -424,8 +426,8 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
         if (nu[t] > max_nu) max_nu = nu[t];
         tot_nu += nu[t];
     }
-    for (u32 t=0; t<=N; ++t) neq += nge[t] + nbu[t] + nbxe[t];
-    neq -= nbxe[0];
+    for (u32 t=0; t<=N; ++t) neq += ng[t] + nbu[t] + nbx[t];
+    neq -= nbx[0];
     for (u32 t=0; t<=N; ++t) nin += ng[t]+nb[t];
 
     wrk->P = (struct blasfeo_dmat*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
@@ -679,12 +681,14 @@ static u32 acados_daocp_detect_equalities(
 {
     const ocp_qp_dims* dims = qp_in->dim;
     u32 pattern_changed = 0;
+    u32 old_count, detected_count;
 
     for (u32 t=0; t<=(u32) dims->N; ++t)
     {   
         // INPUT BOUNDS
-        u32 old_count = mem->nbue[t];
-        u32 detected_count = 0;
+        if (t < dims->N) {
+        old_count = mem->nbue[t];
+        detected_count = 0;
         for (u32 i=0; i<(u32) dims->nbu[t]; ++i)
         {
             if (acados_daocp_is_soft_constraint(qp_in, t, i)) continue;
@@ -703,15 +707,17 @@ static u32 acados_daocp_detect_equalities(
         }
         if (detected_count != old_count) pattern_changed = 1;
         mem->nbue[t] = detected_count;
+        }
         
         // STATE BOUNDS
+        if (t > 0) {
         old_count = mem->nbxe[t];
         detected_count = 0;
         for (u32 i=0; i<(u32) dims->nbx[t]; ++i)
         {
             if (acados_daocp_is_soft_constraint(qp_in, t, dims->nbu[t]+i)) continue;
             u32 explicit_equality = acados_daocp_contains_index(
-                qp_in->idxe[t], dims->nbue[t], dims->nbxe[t], (int) i);
+                qp_in->idxe[t], dims->nbue[t], dims->nbxe[t], dims->nbu[t]+(int)i);
             f64 lower = BLASFEO_DVECEL(qp_in->d+t, dims->nbu[t]+i);
             f64 upper = -BLASFEO_DVECEL(
                 qp_in->d+t, dims->ng[t]+dims->nb[t]+dims->nbu[t]+i);
@@ -725,6 +731,7 @@ static u32 acados_daocp_detect_equalities(
         }
         if (detected_count != old_count) pattern_changed = 1;
         mem->nbxe[t] = detected_count;
+        }
 
         // GENERAL CONSTRAINTS
         old_count = mem->nge[t];
@@ -733,7 +740,7 @@ static u32 acados_daocp_detect_equalities(
         {
             if (acados_daocp_is_soft_constraint(qp_in, t, dims->nb[t]+i)) continue;
             u32 explicit_equality = acados_daocp_contains_index(
-                qp_in->idxe[t], dims->nbue[t]+dims->nbxe[t], dims->nge[t], (int) i);
+                qp_in->idxe[t], dims->nbue[t]+dims->nbxe[t], dims->nge[t], dims->nb[t]+(int)i);
             f64 lower = BLASFEO_DVECEL(qp_in->d+t, dims->nb[t]+i);
             f64 upper = -BLASFEO_DVECEL(
                 qp_in->d+t, dims->ng[t]+2*dims->nb[t]+i);
@@ -794,7 +801,7 @@ static void acados_daocp_process_constraints(
         u32* idxb = qp_native->idxbx[t];
         for (u32 i=0; i<dim->nbx[t]; ++i) {
             int bound_index = dim->nbu[t]+i;
-            if (!acados_daocp_is_equality(mem, t, i, DAOCP_BOUND_X)) continue;
+            if (acados_daocp_is_equality(mem, t, i, DAOCP_BOUND_X)) continue;
             acados_daocp_populate_slack_penalties(qp_in, t, bound_index,
                 qp_native->Zbx[t] + (lbx-qp_native->lbx[t]),
                 qp_native->zbx[t] + (lbx-qp_native->lbx[t]));
@@ -886,8 +893,8 @@ static void acados_daocp_process_constraints(
         if (t!=0) {
             for (u32 i=0; i<mem->nbxe[t]; ++i) {
                 u32 bound_index = mem->idxbxe[t][i];
-                u32 xidx = qp_in->idxb[t][bound_index] - dim->nu[t];
-                d[offset] = BLASFEO_DVECEL(qp_in->d+t, bound_index);
+                u32 xidx = qp_in->idxb[t][dim->nbu[t]+bound_index] - dim->nu[t];
+                d[offset] = BLASFEO_DVECEL(qp_in->d+t, dim->nbu[t]+bound_index);
                 if (dim->nu[t] > 0)
                     memset(Du + offset*dim->nu[t], 0, dim->nu[t]*sizeof(f64));
                 memset(Dx + offset*dim->nx[t], 0, dim->nx[t]*sizeof(f64));
@@ -898,12 +905,11 @@ static void acados_daocp_process_constraints(
         // General equalities
         for (u32 i=0; i<mem->nge[t]; ++i) {
             u32 constraint_index = mem->idxge[t][i];
-            u32 general_index = constraint_index - dim->nb[t];
-            d[offset] = BLASFEO_DVECEL(qp_in->d+t, constraint_index);
+            d[offset] = BLASFEO_DVECEL(qp_in->d+t, dim->nb[t]+constraint_index);
             for (u32 j=0; j<dim->nu[t]; ++j)
-                Du[offset*dim->nu[t]+j] = BLASFEO_DMATEL(qp_in->DCt+t, j, general_index);
+                Du[offset*dim->nu[t]+j] = BLASFEO_DMATEL(qp_in->DCt+t, j, constraint_index);
             for (u32 j=0; j<dim->nx[t]; ++j)
-                Dx[offset*dim->nx[t]+j] = BLASFEO_DMATEL(qp_in->DCt+t, dim->nu[t]+j, general_index);
+                Dx[offset*dim->nx[t]+j] = BLASFEO_DMATEL(qp_in->DCt+t, dim->nu[t]+j, constraint_index);
             ++offset;
         }
         assert(offset == qp_native->dims.ne[t]);
@@ -970,9 +976,8 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     acados_daocp_process_constraints(qp_in, dim, qp_native, wrk, mem);
     /* Slack mappings and explicit equality classification can change between solves.
      * Start from an empty active set for soft QPs until these changes are tracked. */
-    if (opts->first_run) acados_daocp_init_workspace(wrk);
     u32 reset_working_set = !opts->warm_start || equality_pattern_changed || has_slacks;
-    if (!opts->first_run && reset_working_set) daocp_reset_working_set(wrk);
+    if (opts->first_run || reset_working_set) acados_daocp_init_workspace(wrk);
     // Set solution pointers
     mem->sol.ux = qp_out->ux;
 
