@@ -54,6 +54,8 @@ def setup_ocp_solver(x0, Fmax, N_horizon, Tf):
     # set ocp options
     ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
     ocp.solver_options.qp_tol = 1e-8
+    ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_DAOCP'
+    ocp.solver_options.nlp_solver_type = 'SQP_RTI'
 
     ocp.code_export_directory = 'c_generated_code_ocp'
     ocp_solver = AcadosOcpSolver(ocp)

@@ -156,7 +156,8 @@ class AcadosOcpOptions:
             'PARTIAL_CONDENSING_QPDUNES',
             'PARTIAL_CONDENSING_OSQP',
             'PARTIAL_CONDENSING_CLARABEL',
-            'FULL_CONDENSING_DAQP')
+            'FULL_CONDENSING_DAQP',
+            'PARTIAL_CONDENSING_DAOCP')
 
         Default: 'PARTIAL_CONDENSING_HPIPM'.
 
@@ -220,7 +221,7 @@ class AcadosOcpOptions:
         qp_solvers = ('PARTIAL_CONDENSING_HPIPM', \
                 'FULL_CONDENSING_QPOASES', 'FULL_CONDENSING_HPIPM', \
                 'PARTIAL_CONDENSING_QPDUNES', 'PARTIAL_CONDENSING_OSQP', 'PARTIAL_CONDENSING_CLARABEL', \
-                'FULL_CONDENSING_DAQP')
+                'FULL_CONDENSING_DAQP', 'PARTIAL_CONDENSING_DAOCP')
         if qp_solver in qp_solvers:
             self.__qp_solver = qp_solver
         else:

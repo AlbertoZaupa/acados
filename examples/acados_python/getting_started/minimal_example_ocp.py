@@ -52,14 +52,14 @@ def main():
     ocp.constraints.x0 = np.array([0.0, np.pi, 0.0, 0.0])
 
     # set options
-    ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM' # FULL_CONDENSING_QPOASES
+    ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_DAOCP' # FULL_CONDENSING_QPOASES
     # PARTIAL_CONDENSING_HPIPM, FULL_CONDENSING_QPOASES, FULL_CONDENSING_HPIPM,
     # PARTIAL_CONDENSING_QPDUNES, PARTIAL_CONDENSING_OSQP, FULL_CONDENSING_DAQP
     ocp.solver_options.hessian_approx = 'GAUSS_NEWTON' # 'GAUSS_NEWTON', 'EXACT'
     ocp.solver_options.integrator_type = 'IRK'
     # ocp.solver_options.print_level = 1
-    ocp.solver_options.nlp_solver_type = 'SQP' # SQP_RTI, SQP
-    ocp.solver_options.globalization = 'MERIT_BACKTRACKING' # turns on globalization
+    ocp.solver_options.nlp_solver_type = 'SQP_RTI' # SQP_RTI, SQP
+    #ocp.solver_options.globalization = 'MERIT_BACKTRACKING' # turns on globalization
 
     ocp_solver = AcadosOcpSolver(ocp)
 

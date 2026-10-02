@@ -49,6 +49,10 @@
     {%- endif %}
 {%- endif %}
 
+{%- if qp_solver == "PARTIAL_CONDENSING_DAOCP" %}
+    {%- set link_libs = link_libs ~ " -ldaocp" %}
+{%- endif %}
+
 cmake_minimum_required(VERSION 3.13)
 
 project({{ name }})
@@ -161,6 +165,9 @@ set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
 set(CMAKE_C_FLAGS "-fPIC -std=c99 {{ openmp_flag }} {{ code_gen_options.ext_fun_compile_flags | replace(from="\", to="/") }} {{ " " }}
 {%- if qp_solver == "FULL_CONDENSING_QPOASES" -%}
     -DACADOS_WITH_QPOASES
+{%- endif -%}
+{%- if qp_solver == "PARTIAL_CONDENSING_DAOCP" -%}
+    -DACADOS_WITH_DAOCP
 {%- endif -%}
 {%- if qp_solver == "FULL_CONDENSING_DAQP" -%}
     -DACADOS_WITH_DAQP

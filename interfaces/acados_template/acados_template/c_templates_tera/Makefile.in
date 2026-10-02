@@ -51,6 +51,10 @@
 	{%- endif %}
 {%- endif %}
 
+{%- if qp_solver == "PARTIAL_CONDENSING_DAOCP" %}
+    {%- set link_libs = link_libs ~ " -ldaocp" %}
+{%- endif %}
+
 # define sources and use make's implicit rules to generate object files (*.o)
 
 # model
@@ -127,6 +131,9 @@ LIB_PATH = {{ code_gen_options.acados_lib_path }}
 # preprocessor flags for make's implicit rules
 {%- if qp_solver == "FULL_CONDENSING_QPOASES" %}
 CPPFLAGS += -DACADOS_WITH_QPOASES
+{%- endif %}
+{%- if qp_solver == "PARTIAL_CONDENSING_DAOCP" %}
+CPPFLAGS += -DACADOS_WITH_DAOCP
 {%- endif %}
 {%- if qp_solver == "FULL_CONDENSING_DAQP" %}
 CPPFLAGS += -DACADOS_WITH_DAQP
