@@ -418,6 +418,11 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     c_ptr = assign_ptr_vec(mem->qp.zbx+1, c_ptr, nbx+1, 0, 0, sizeof(f64), N);
     c_ptr = assign_ptr_vec(mem->qp.Zg, c_ptr, ng, 0, 0, sizeof(f64), N+1);
     c_ptr = assign_ptr_vec(mem->qp.zg, c_ptr, ng, 0, 0, sizeof(f64), N+1);
+    // Set inverse quadratic penalties to zero: default initialization is
+    // all constraints are hard.
+    for (u32 t=0; t<N; ++t) memset(mem->qp.Zbu[t], 0, nbu[t]*sizeof(f64)); 
+    for (u32 t=1; t<=N; ++t) memset(mem->qp.Zbx[t], 0, nbx[t]*sizeof(f64)); 
+    for (u32 t=0; t<=N; ++t) memset(mem->qp.Zg[t], 0, ng[t]*sizeof(f64)); 
 
     // daocp_workspace data
     int max_nx = 0; int max_nu = 0; int neq = 0; int nin = 0; int tot_nu = 0;
@@ -758,6 +763,64 @@ static u32 acados_daocp_detect_equalities(
     return pattern_changed;
 }
 
+static int acados_daocp_detect_changes_in_softening_pattern(
+    const ocp_qp_daocp_memory* mem, const ocp_qp_in* qp
+)
+{
+    const ocp_qp_dims* dims = qp->dim;
+    for (int t=0; t<=dims->N; ++t)
+    {
+        int ns = dims->ns[t], nb = dims->nb[t], ng = dims->ng[t];
+        int nbu = dims->nbu[t], nbx = dims->nbx[t];
+        // Get number of softened constraints for the previous problem
+        int ns_prev = 0;
+        for (int i=0; i<mem->qp.dims.nbu[t]; ++i) ns_prev += (mem->qp.Zbu[t][i] > 0);
+        for (int i=0; i<mem->qp.dims.nbx[t]; ++i) ns_prev += (mem->qp.Zbx[t][i] > 0);
+        for (int i=0; i<mem->qp.dims.ng[t]; ++i) ns_prev += (mem->qp.Zg[t][i] > 0);
+        
+        // If number of softened constraints is different, return
+        if (ns != ns_prev) return 1;
+
+        // Check that the softened constraints in the new problem are the
+        // same as in the previous problem.
+        for (int k=0; k<ns; ++k)
+        {
+            // Retrieve index of constraint associated to this slack
+            int c_idx = -1;
+            for (int i=0; (i<nb+ng) && c_idx<0; ++i) if (qp->idxs_rev[t][i] == k) c_idx = i;
+
+            // Determine type of constraint
+            daocp_constraint_type ctype;
+            if (c_idx < nbu) ctype = DAOCP_BOUND_U;
+            else if (c_idx < nb) ctype = DAOCP_BOUND_X;
+            else ctype = DAOCP_MIXED;
+            
+            // Obtain constraint index in DAOCP's representation
+            int c_idx_daocp;
+            if (ctype == DAOCP_BOUND_U) {
+                c_idx_daocp = c_idx;
+                for (u32 i=0; i<mem->nbue[t] && mem->idxbue[t][i] >= c_idx; ++i) c_idx_daocp -= 1; 
+            } else if (ctype == DAOCP_BOUND_U) {
+                c_idx_daocp = c_idx - nbu;
+                for (u32 i=0; i<mem->nbxe[t] && mem->idxbxe[t][i] >= c_idx-nbu; ++ i) c_idx_daocp -= 1;
+            } else {
+                c_idx_daocp = c_idx - nb;
+                for (u32 i=0; i<mem->nge[t] && mem->idxge[t][i]>=c_idx-nb; ++i) c_idx_daocp -= 1;
+            }
+
+            // Check if the constraint was softened previously.
+            if (ctype == DAOCP_BOUND_U) {
+                if (mem->qp.Zbu[t][c_idx_daocp] == 0.0) return 1;
+            } else if (ctype == DAOCP_BOUND_X) {
+                if (mem->qp.Zbx[t][c_idx_daocp] == 0.0) return 1;
+            } else {
+                if (mem->qp.Zg[t][c_idx_daocp] == 0.0) return 1;
+            } 
+        }
+    }
+    return 0;
+}
+
 static void acados_daocp_process_constraints(
     ocp_qp_in* qp_in, ocp_qp_dims* dim, daocp_qp* qp_native,
     daocp_workspace* wrk, ocp_qp_daocp_memory* mem) {
@@ -971,12 +1034,14 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
         blasfeo_drowin(dim->nu[t]+dim->nx[t], 1.0, qp_in->rqz+t, 0, qp_in->RSQrq+t, dim->nu[t]+dim->nx[t], 0);
     daocp_workspace* wrk = (daocp_workspace*) mem->workspace;
     wrk->dims = &qp_native->dims;
+    // Detect changes in the pattern of softened constraints
+    u32 slack_pattern_changed = acados_daocp_detect_changes_in_softening_pattern(mem, qp_in);
     // Detect equalities from problem data
     u32 equality_pattern_changed = acados_daocp_detect_equalities(qp_in, opts, mem);
     acados_daocp_process_constraints(qp_in, dim, qp_native, wrk, mem);
     /* Slack mappings and explicit equality classification can change between solves.
      * Start from an empty active set for soft QPs until these changes are tracked. */
-    u32 reset_working_set = !opts->warm_start || equality_pattern_changed || has_slacks;
+    u32 reset_working_set = !opts->warm_start || equality_pattern_changed || slack_pattern_changed;
     if (opts->first_run || reset_working_set) acados_daocp_init_workspace(wrk);
     // Set solution pointers
     mem->sol.ux = qp_out->ux;
