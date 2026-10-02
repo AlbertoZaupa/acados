@@ -48,7 +48,6 @@ typedef struct ocp_qp_daocp_opts_
     int print_level;
     int warm_start;
     int first_run;
-    int detect_input_bound_equalities;
     double equality_detection_tolerance;
 } ocp_qp_daocp_opts;
 
@@ -58,9 +57,12 @@ typedef struct ocp_qp_daocp_memory_
     daocp_qp qp;
     daocp_sol sol;
     void* workspace;
-    // All hard input equalities, both explicit and automatically detected.
-    u32** detected_input_equalities;
-    u32* num_detected_input_equalities;
+    u32** idxbue;
+    u32** idxbxe;
+    u32** idxge;
+    u32* nbue;
+    u32* nbxe;
+    u32* nge;
     double time_qp_solver_call;
 } ocp_qp_daocp_memory;
 
