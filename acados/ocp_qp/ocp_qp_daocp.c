@@ -177,9 +177,7 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     int* nb = dims->nb;
     int* nbu = dims->nbu;
     int* nbx = dims->nbx;
-    int* ng = dims->ng; 
-    int* nge = dims->nge;
-    int* nbxe = dims->nbxe;
+    int* ng = dims->ng;
 
     // daocp_qp data
     size += 4*(N+1)*sizeof(u32); // dims.ng, dims.ne, dims.nbu, dims.nbx
@@ -321,9 +319,7 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     int* nb = dims->nb;
     int* nbu = dims->nbu;
     int* nbx = dims->nbx;
-    int* ng = dims->ng; 
-    int* nge = dims->nge;
-    int* nbxe = dims->nbxe;
+    int* ng = dims->ng;
 
     // daocp_qp data
     mem->qp.dims.nbu = (u32*) (c_ptr += sizeof(daocp_workspace));
@@ -771,7 +767,7 @@ static int acados_daocp_detect_changes_in_softening_pattern(
     for (int t=0; t<=dims->N; ++t)
     {
         int ns = dims->ns[t], nb = dims->nb[t], ng = dims->ng[t];
-        int nbu = dims->nbu[t], nbx = dims->nbx[t];
+        int nbu = dims->nbu[t];
         // Get number of softened constraints for the previous problem
         int ns_prev = 0;
         for (int i=0; i<mem->qp.dims.nbu[t]; ++i) ns_prev += (mem->qp.Zbu[t][i] > 0);
@@ -799,13 +795,13 @@ static int acados_daocp_detect_changes_in_softening_pattern(
             int c_idx_daocp;
             if (ctype == DAOCP_BOUND_U) {
                 c_idx_daocp = c_idx;
-                for (u32 i=0; i<mem->nbue[t] && mem->idxbue[t][i] >= c_idx; ++i) c_idx_daocp -= 1; 
-            } else if (ctype == DAOCP_BOUND_U) {
+                for (u32 i=0; i<mem->nbue[t] && mem->idxbue[t][i] < c_idx; ++i) c_idx_daocp -= 1; 
+            } else if (ctype == DAOCP_BOUND_X) {
                 c_idx_daocp = c_idx - nbu;
-                for (u32 i=0; i<mem->nbxe[t] && mem->idxbxe[t][i] >= c_idx-nbu; ++ i) c_idx_daocp -= 1;
+                for (u32 i=0; i<mem->nbxe[t] && mem->idxbxe[t][i] < c_idx-nbu; ++i) c_idx_daocp -= 1;
             } else {
                 c_idx_daocp = c_idx - nb;
-                for (u32 i=0; i<mem->nge[t] && mem->idxge[t][i]>=c_idx-nb; ++i) c_idx_daocp -= 1;
+                for (u32 i=0; i<mem->nge[t] && mem->idxge[t][i] < c_idx-nb; ++i) c_idx_daocp -= 1;
             }
 
             // Check if the constraint was softened previously.
@@ -1019,8 +1015,7 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     }
     if (acados_daocp_validate_slacks(qp_in) != ACADOS_SUCCESS)
         return ACADOS_QP_FAILURE;
-    u32 has_slacks = 0;
-    for (int t=0; t<=dim->N; ++t) has_slacks |= dim->ns[t] > 0;
+    
     // Conversion of data structures
     daocp_qp* qp_native = &mem->qp;
     // (Shadow) copy dynamics and cost
@@ -1035,7 +1030,8 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     daocp_workspace* wrk = (daocp_workspace*) mem->workspace;
     wrk->dims = &qp_native->dims;
     // Detect changes in the pattern of softened constraints
-    u32 slack_pattern_changed = acados_daocp_detect_changes_in_softening_pattern(mem, qp_in);
+    u32 slack_pattern_changed = 0;
+    if (!opts->first_run) acados_daocp_detect_changes_in_softening_pattern(mem, qp_in);
     // Detect equalities from problem data
     u32 equality_pattern_changed = acados_daocp_detect_equalities(qp_in, opts, mem);
     acados_daocp_process_constraints(qp_in, dim, qp_native, wrk, mem);
