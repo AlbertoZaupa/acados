@@ -240,11 +240,12 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     size += 6*N*sizeof(struct blasfeo_dmat); // P, Ku, Ke, Luu, Lue, Lee
     size += (3*N+1)*sizeof(struct blasfeo_dvec); // ux_lqr, eta_lqr, b
     size += (2*tot_nu + tot_nx - nx[0])*sizeof(f64); // x, u, eta
-    size += (3*N+1)*sizeof(f64*); // x[:], u[:], eta[:]
+    size += (4*N+2)*sizeof(f64*); // x[:], u[:], eta[:], sol.eta[:]
     size += (N+1)*sizeof(daocp_constraint_type*); // contypes[:]
     size += (nin-nb_tot)*sizeof(daocp_constraint_type); // contypes
-    size += 3*N*sizeof(u32); // cnu, rho, crho
+    size += 4*N*sizeof(u32); // cnu, rho, crho, m
     size += (N+1)*sizeof(u32*); // as.constraint_status[:]
+    size += N*sizeof(f64*); // J
     size += 2*nin*sizeof(u32); // as.constraint_status
         
     int W_stride = nin+1;
@@ -254,6 +255,11 @@ acados_size_t ocp_qp_daocp_memory_calculate_size(void *config_, void *dims_, voi
     size += (W_stride+1)*W_stride*sizeof(f64); // Ld
     size += 2*W_stride*tot_nu*sizeof(f64); // Mu, Me
 
+    // We must allocate nin slots for equality duals in the solution
+    // because across solves any inequality constraint may become an equality.
+    size += nin*sizeof(f64); // sol.eta
+    // The upper bound on J data can be tighter (see daocp for remark on the topic)
+    size += nin*tot_nu*sizeof(f64); // J data
     size += neq*max_nx*sizeof(f64); // H
     size += 2*neq*sizeof(f64); // h, tmp1
     size += (neq+1)*(max_nx+max_nu+1)*sizeof(f64); // GEtmp
@@ -321,6 +327,16 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     int* nbx = dims->nbx;
     int* ng = dims->ng;
 
+    int max_nx = 0; int max_nu = 0; int neq = 0; int nin = 0; int tot_nu = 0;
+    for (u32 t=0; t<=N; ++t) if (nx[t] > max_nx) max_nx = nx[t];
+    for (u32 t=0; t<N; ++t) {
+        if (nu[t] > max_nu) max_nu = nu[t];
+        tot_nu += nu[t];
+    }
+    for (u32 t=0; t<=N; ++t) neq += ng[t] + nbu[t] + nbx[t];
+    neq -= nbx[0];
+    for (u32 t=0; t<=N; ++t) nin += ng[t]+nb[t];
+
     // daocp_qp data
     mem->qp.dims.nbu = (u32*) (c_ptr += sizeof(daocp_workspace));
     mem->qp.dims.nbx = (u32*) (c_ptr += (N+1)*sizeof(u32));
@@ -362,10 +378,14 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     mem->qp.Cx = (f64**) (c_ptr += N*sizeof(f64*));
     mem->qp.Du = (f64**) (c_ptr += (N+1)*sizeof(f64*));
     mem->qp.Dx = (f64**) (c_ptr += (N+1)*sizeof(f64*));
+    mem->sol.eta = (f64**) (c_ptr += (N+1)*sizeof(f64*));
     mem->qp.idxbu = (u32**) (c_ptr += (N+1)*sizeof(f64*));
     mem->qp.idxbx = (u32**) (c_ptr += N*sizeof(u32*));
     c_ptr += (N+1)*sizeof(u32*);
     align_char_to(8, &c_ptr);
+    // Only the first pointer in sol.eta is assigned, at allocation time.
+    mem->sol.eta[0] = c_ptr;
+    c_ptr += nin*sizeof(f64);
     c_ptr = assign_ptr_vec(mem->qp.lbu, c_ptr, nbu, 0, 0, sizeof(f64), N);
     c_ptr = assign_ptr_vec(wrk->lbu_wrk, c_ptr, nbu, 0, 0, sizeof(f64), N);
     mem->qp.lbx[0] = 0; c_ptr = assign_ptr_vec(mem->qp.lbx+1, c_ptr, nbx+1, 0, 0, sizeof(f64), N);
@@ -421,16 +441,6 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     for (u32 t=0; t<=N; ++t) memset(mem->qp.Zg[t], 0, ng[t]*sizeof(f64)); 
 
     // daocp_workspace data
-    int max_nx = 0; int max_nu = 0; int neq = 0; int nin = 0; int tot_nu = 0;
-    for (u32 t=0; t<=N; ++t) if (nx[t] > max_nx) max_nx = nx[t];
-    for (u32 t=0; t<N; ++t) {
-        if (nu[t] > max_nu) max_nu = nu[t];
-        tot_nu += nu[t];
-    }
-    for (u32 t=0; t<=N; ++t) neq += ng[t] + nbu[t] + nbx[t];
-    neq -= nbx[0];
-    for (u32 t=0; t<=N; ++t) nin += ng[t]+nb[t];
-
     wrk->P = (struct blasfeo_dmat*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
     wrk->Ku = (struct blasfeo_dmat*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
     wrk->Ke = (struct blasfeo_dmat*) c_ptr; c_ptr+=N*sizeof(struct blasfeo_dmat);
@@ -444,6 +454,7 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     wrk->u = (f64**) c_ptr; c_ptr += N*sizeof(f64*);
     wrk->x = (f64**) c_ptr; c_ptr += (N+1)*sizeof(f64*);
     wrk->eta = (f64**) c_ptr; c_ptr += N*sizeof(f64*);
+    wrk->J = (f64**) c_ptr; c_ptr += N*sizeof(f64*);
     wrk->contypes = (daocp_constraint_type**) c_ptr; c_ptr += (N+1)*sizeof(daocp_constraint_type*);
     wrk->as.constraint_status = (u32**) c_ptr; c_ptr += (N+1)*sizeof(u32*);
     c_ptr = assign_ptr_vec(wrk->u, c_ptr, nu, 0, 0, sizeof(f64), N);
@@ -461,6 +472,7 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     wrk->cnu = (u32*) c_ptr; c_ptr += N*sizeof(u32);
     wrk->rho = (u32*) c_ptr; c_ptr += N*sizeof(u32);
     wrk->crho = (u32*) c_ptr; c_ptr += N*sizeof(u32);
+    wrk->m = (u32*) c_ptr; c_ptr += N*sizeof(u32);
 
     align_char_to(64, &c_ptr);
     for (u32 t=0; t<N; ++t) {
@@ -501,6 +513,8 @@ void *ocp_qp_daocp_memory_assign(void *config_, void *dims_, void *opts_, void *
     wrk->Ld = (f64*) c_ptr; c_ptr+=(W_stride+1)*W_stride*sizeof(f64);
     wrk->Mu = (f64*) c_ptr; c_ptr+=W_stride*tot_nu*sizeof(f64);
     wrk->Me = (f64*) c_ptr; c_ptr+=W_stride*tot_nu*sizeof(f64);
+    // Only the last J pointer is assigned, at allocation time.
+    wrk->J[N-1] = (f64*) c_ptr; c_ptr+=tot_nu*nin;
     wrk->H = (f64*) c_ptr; c_ptr+=neq*max_nx*sizeof(f64);
     wrk->h = (f64*) c_ptr; c_ptr+=neq*sizeof(f64);
     wrk->tmp1 = (f64*) c_ptr; c_ptr+=neq*sizeof(f64);
@@ -987,6 +1001,68 @@ static void acados_daocp_init_workspace(daocp_workspace* wrk) {
     daocp_reset_working_set(wrk);
 }
 
+static void acados_daocp_retrieve_slacks(ocp_qp_daocp_memory* mem, ocp_qp_dims* dim, ocp_qp_in* qp_in, ocp_qp_out* qp_out) {
+    for (int t=0; t<=dim->N; ++t) {
+        blasfeo_dvecse(2*dim->ns[t], 0.0, qp_out->ux+t, dim->nu[t]+dim->nx[t]);
+        for (int i=0; i<dim->nb[t]+dim->ng[t]; ++i) {
+            int slack = qp_in->idxs_rev[t][i];
+            if (slack < 0) continue;
+            double value = 0.0;
+            if (i < dim->nb[t]) value = BLASFEO_DVECEL(qp_out->ux+t, qp_in->idxb[t][i]);
+            else
+                for (int j=0; j<dim->nu[t]+dim->nx[t]; ++j)
+                    value += BLASFEO_DMATEL(qp_in->DCt+t, j, i-dim->nb[t]) * BLASFEO_DVECEL(qp_out->ux+t, j);
+            int offset = dim->nu[t]+dim->nx[t]+slack;
+            BLASFEO_DVECEL(qp_out->ux+t, offset) = fmax(0.0, BLASFEO_DVECEL(qp_in->d+t, i)-value);
+            BLASFEO_DVECEL(qp_out->ux+t, offset+dim->ns[t]) = fmax(0.0, value+BLASFEO_DVECEL(qp_in->d+t, dim->nb[t]+dim->ng[t]+i));
+        }
+    } 
+}
+
+static void acados_daocp_retrieve_dual_sol(ocp_qp_daocp_memory* mem, ocp_qp_dims* dim, ocp_qp_in* qp_in, ocp_qp_out* qp_out) {
+    daocp_workspace* wrk = mem->workspace;
+
+    // Set pointers in mem->sol
+    for (int t=1; t<=dim->N; ++t) {
+        mem->sol.eta[t] = mem->sol.eta[t-1] + mem->nge[t-1] + mem->nbue[t-1] + mem->nbxe[t-1];
+    }
+    daocp_reconstruct_eqcon_dual(mem->workspace, &mem->sol);
+
+    // Populate acados structs with equalities multiplers
+    for (int t=0; t<=dim->N; ++t) {
+        blasfeo_dvecse(2*(dim->nb[t]+dim->ng[t]+dim->ns[t]), 0.0, qp_out->lam+t, 0);
+        
+        for (int i=0; i<mem->nbue[t]; ++i)
+            BLASFEO_DVECEL(qp_out->lam + t, mem->idxbue[t][i]) = mem->sol.eta[t][i];
+        for (int i=0; i<mem->nbxe[t]; ++i)
+            BLASFEO_DVECEL(qp_out->lam + t, dim->nbu[t] + mem->idxbxe[t][i]) = mem->sol.eta[t][mem->nbue[t]+i];
+        for (int i=0; i<mem->nge[t]; ++i)
+            BLASFEO_DVECEL(qp_out->lam + t, dim->nb[t] + mem->idxge[t][i]) = mem->sol.eta[t][mem->nbue[t]+mem->nbxe[t]+i];
+    }
+
+    // Populate acados structs with inequalities multipliers
+    for (int i=0; i<wrk->as.n_active; ++i) {
+        daocp_constraint* c = wrk->as.xi2con + i;
+        u32 t = c->t;
+        u32 idx = c->idx;
+        u32 offset = c->is_upper ? 0 : dim->nb[t] + dim->ng[t];
+        if (c->type == DAOCP_BOUND_U) {
+            for (u32 j=0; j<mem->nbue[t] && mem->idxbue[t][j] <= idx; ++j) ++idx;
+            BLASFEO_DVECEL(qp_out->lam + t, offset+idx) = wrk->xi[i];
+        } else if (c->type == DAOCP_BOUND_X) {
+            for (u32 j=0; j<mem->nbxe[t] && mem->idxbxe[t][j] <= idx; ++j) ++idx;
+            BLASFEO_DVECEL(qp_out->lam + t, offset+dim->nbu[t]+idx) = wrk->xi[i];
+        } else {
+            for (u32 j=0; j<mem->nge[t] && mem->idxge[t][j] <= idx; ++j) ++idx; 
+            BLASFEO_DVECEL(qp_out->lam + t, offset+dim->nb[t]+idx) = wrk->xi[i];
+        }
+    }
+}
+
+static void acados_daocp_retrieve_equality_multipliers(ocp_qp_daocp_memory* mem, ocp_qp_dims* dim, ocp_qp_in* qp_in, ocp_qp_out* qp_out) {
+
+}
+
 int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, void *work_)
 {
     ocp_qp_in *qp_in = qp_in_;
@@ -1066,24 +1142,9 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     opts->first_run = 0;
     mem->time_qp_solver_call = acados_toc(&solver_call_timer);
 
-    /* Dual export is unavailable. Never leave stale multipliers in qp_out. */
-    for (int t=0; t<=dim->N; ++t) {
-        blasfeo_dvecse(2*(dim->nb[t]+dim->ng[t]+dim->ns[t]), 0.0, qp_out->lam+t, 0);
-        if (t < dim->N) blasfeo_dvecse(dim->nx[t+1], 0.0, qp_out->pi+t, 0);
-        blasfeo_dvecse(2*dim->ns[t], 0.0, qp_out->ux+t, dim->nu[t]+dim->nx[t]);
-        for (int i=0; i<dim->nb[t]+dim->ng[t]; ++i) {
-            int slack = qp_in->idxs_rev[t][i];
-            if (slack < 0) continue;
-            double value = 0.0;
-            if (i < dim->nb[t]) value = BLASFEO_DVECEL(qp_out->ux+t, qp_in->idxb[t][i]);
-            else
-                for (int j=0; j<dim->nu[t]+dim->nx[t]; ++j)
-                    value += BLASFEO_DMATEL(qp_in->DCt+t, j, i-dim->nb[t]) * BLASFEO_DVECEL(qp_out->ux+t, j);
-            int offset = dim->nu[t]+dim->nx[t]+slack;
-            BLASFEO_DVECEL(qp_out->ux+t, offset) = fmax(0.0, BLASFEO_DVECEL(qp_in->d+t, i)-value);
-            BLASFEO_DVECEL(qp_out->ux+t, offset+dim->ns[t]) = fmax(0.0, value+BLASFEO_DVECEL(qp_in->d+t, dim->nb[t]+dim->ng[t]+i));
-        }
-    }
+    acados_daocp_retrieve_slacks(mem, dim, qp_in, qp_out);
+    acados_daocp_retrieve_dual_solution(mem, dim, qp_in, qp_out);
+    acados_daocp_retrieve_equality_multipliers(mem, dim, qp_in, qp_out);
     ocp_qp_compute_t(qp_in, qp_out);
 
     if (opts->print_level > 0)
