@@ -1148,21 +1148,29 @@ static void acados_daocp_retrieve_equality_multipliers(ocp_qp_daocp_memory* mem,
     }
 
     // Initial condition multiplier
+    struct blasfeo_dvec* mu = &wrk->costate0;
     // -\mu = A_t' pi_1 + Q_0 x_0 + S_0' u_0 + q_0 + D_0' (\lam_{g,0}^u - \lam_{g,0}^l)
     blasfeo_dgemv_n(dim->nx[0], dim->nx[1], -1.0, qp_in->BAbt, dim->nu[0], 0, qp_out->pi,
-                    0, -1.0, qp_in->rqz, dim->nu[0], qp_out->lam, 0);
+                    0, -1.0, qp_in->rqz, dim->nu[0], mu, 0);
     blasfeo_dsymv_l(dim->nx[0], -1.0, qp_in->RSQrq, dim->nu[0], dim->nu[0], qp_out->ux,
-                    dim->nu[0], 1.0, qp_out->lam, 0, qp_out->lam, 0);
+                    dim->nu[0], 1.0, mu, 0, mu, 0);
     blasfeo_dgemv_n(dim->nx[0], dim->nu[0], -1.0, qp_in->RSQrq, dim->nu[0], 0, qp_out->ux,
-                    0, 1.0, qp_out->lam, 0, qp_out->lam, 0);
+                    0, 1.0, mu, 0, mu, 0);
 
     // Do not add dual contributions if the problem was infeasible
-    if (return_status == DAOCP_INFEASIBLE) return;
-    tmp.pa = mem->sol.lam[0];
-    blasfeo_daxpy(dim->ng[0], -1.0, qp_out->lam, dim->nb[0], qp_out->lam,
-                  2*dim->nb[0]+dim->ng[0], &tmp, 0);
-    blasfeo_dgemv_n(dim->nx[0], dim->ng[0], -1.0, qp_in->DCt, dim->nu[0], 0, &tmp, 0, 1.0, qp_out->lam,
-                        0, qp_out->lam, 0);
+    if (return_status != DAOCP_INFEASIBLE) {
+        tmp.pa = mem->sol.lam[0];
+        blasfeo_daxpy(dim->ng[0], -1.0, qp_out->lam, dim->nb[0], qp_out->lam,
+                    2*dim->nb[0]+dim->ng[0], &tmp, 0);
+        blasfeo_dgemv_n(dim->nx[0], dim->ng[0], -1.0, qp_in->DCt, dim->nu[0], 0, &tmp, 0, 1.0, mu,
+                            0, mu, 0);
+    }
+    for (int i = 0; i < dim->nbxe[0]; ++i) {
+        int b = qp_in->idxe[0][dim->nbue[0] + i];
+        int j = qp_in->idxb[0][b] - dim->nu[0];
+        BLASFEO_DVECEL(qp_out->lam, b) = fmax(-BLASFEO_DVECEL(mu, j), 0.0);
+        BLASFEO_DVECEL(qp_out->lam, dim->nb[0]+dim->ng[0]+b) = fmax(BLASFEO_DVECEL(mu, j), 0.0);
+    }
 }
 
 int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, void *work_)
