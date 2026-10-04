@@ -103,6 +103,11 @@ void ocp_qp_daocp_opts_set(void *config_, void *opts_, const char *field, void *
         int* warm_start = (int *) value;
         opts->warm_start = *warm_start;
     }
+    else if (!strcmp(field, "tol_ineq"))
+    {
+        double *tol = value;
+        opts->daocp_opts.primal_tol = *tol;
+    }
     else if (!strcmp(field, "selection_strategy"))
     {
         int code = *((int*) value);
@@ -1099,14 +1104,15 @@ static void acados_daocp_retrieve_equality_multipliers(ocp_qp_daocp_memory* mem,
     //                   + \lam_{bx,N}^u - \lam_{bx,N}^l 
     blasfeo_dsymv_l(dim->nx[N], 1.0, qp_in->RSQrq+N, 0, 0, qp_out->ux+N, 0, 1.0, 
                     qp_in->rqz+N, 0, qp_out->pi + N-1, 0);
-    // General constraints contribution.
-    tmp.pa = mem->sol.lam[N];
-    blasfeo_daxpy(dim->ng[N], -1.0, qp_out->lam+N, dim->nb[N], qp_out->lam+N,
-                  2*dim->nb[N]+dim->ng[N], &tmp, 0);
+    
     // Don't add dual contribution if problem is infeasible.
     if (return_status != DAOCP_INFEASIBLE) {
+        // General constraints contribution.
+        tmp.pa = mem->sol.lam[N];
+        blasfeo_daxpy(dim->ng[N], -1.0, qp_out->lam+N, dim->nb[N], qp_out->lam+N,
+                    2*dim->nb[N]+dim->ng[N], &tmp, 0);
         blasfeo_dgemv_n(dim->nx[N], dim->ng[N], 1.0, qp_in->DCt+N, 0, 0, &tmp, 0, 1.0, qp_out->pi+N-1,
-                        0, qp_out->pi+N-1, 0);
+                    0, qp_out->pi+N-1, 0);
         // State bounds contribution
         for (int i=0; i<dim->nbx[N]; ++i) {
             int x_idx = qp_in->idxb[N][i];
@@ -1217,7 +1223,8 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     wrk->dims = &qp_native->dims;
     // Detect changes in the pattern of softened constraints
     u32 slack_pattern_changed = 0;
-    if (!opts->first_run) acados_daocp_detect_changes_in_softening_pattern(mem, qp_in);
+    if (!opts->first_run) 
+        slack_pattern_changed = acados_daocp_detect_changes_in_softening_pattern(mem, qp_in);
     // Detect equalities from problem data
     u32 equality_pattern_changed = acados_daocp_detect_equalities(qp_in, opts, mem);
     acados_daocp_process_constraints(qp_in, dim, qp_native, wrk, mem);
