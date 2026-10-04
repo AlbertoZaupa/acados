@@ -1088,7 +1088,7 @@ static void acados_daocp_retrieve_dual_sol(ocp_qp_daocp_memory* mem, ocp_qp_dims
     }
 }
 
-static void acados_daocp_retrieve_equality_multipliers(ocp_qp_daocp_memory* mem, ocp_qp_dims* dim, ocp_qp_in* qp_in, ocp_qp_out* qp_out) {
+static void acados_daocp_retrieve_equality_multipliers(ocp_qp_daocp_memory* mem, ocp_qp_dims* dim, ocp_qp_in* qp_in, ocp_qp_out* qp_out, daocp_status return_status) {
     // Equality multipliers must be computed only after the other dual multipliers
     // have already been translated into acados' format.
     daocp_workspace* wrk = mem->workspace;
@@ -1097,62 +1097,71 @@ static void acados_daocp_retrieve_equality_multipliers(ocp_qp_daocp_memory* mem,
 
     // Initialize pi_N = P_N x_N + p_N + D_N' (\lam_{g,N}^u - \lam_{g,N}^l)
     //                   + \lam_{bx,N}^u - \lam_{bx,N}^l 
-    blasfeo_dgemv_n(dim->nx[N], dim->nx[N], 1.0, qp_in->RSQrq+N, 0, 0, qp_out->ux+N, 0, 1.0, 
-                    qp_in->rqz, 0, qp_out->pi + N-1, 0);
+    blasfeo_dsymv_l(dim->nx[N], 1.0, qp_in->RSQrq+N, 0, 0, qp_out->ux+N, 0, 1.0, 
+                    qp_in->rqz+N, 0, qp_out->pi + N-1, 0);
     // General constraints contribution.
     tmp.pa = mem->sol.lam[N];
-    blasfeo_daxpy(dim->ng[N], -1.0, qp_out->lam+N, 2*dim->nb[N]+dim->ng[N], qp_out->lam+N,
-                  dim->nb[N], &tmp, 0);
-    blasfeo_dgemv_n(dim->nx[N], dim->ng[N], 1.0, qp_in->DCt+N, 0, 0, &tmp, 0, 1.0, qp_out->pi+N-1,
-                    0, qp_out->pi+N-1, 0);
-    // State bounds contribution
-    for (int i=0; i<dim->nbx[N]; ++i) {
-        int x_idx = qp_in->idxb[i];
-        BLASFEO_DVECEL(qp_out->pi+N-1, x_idx) += 
-            BLASFEO_DVECEL(qp_out->lam+N, i)
-            - BLAFEO_DVECEL(qp_out->lam+N, dim->nb[N]+dim->ng[N]+i);
+    blasfeo_daxpy(dim->ng[N], -1.0, qp_out->lam+N, dim->nb[N], qp_out->lam+N,
+                  2*dim->nb[N]+dim->ng[N], &tmp, 0);
+    // Don't add dual contribution if problem is infeasible.
+    if (return_status != DAOCP_INFEASIBLE) {
+        blasfeo_dgemv_n(dim->nx[N], dim->ng[N], 1.0, qp_in->DCt+N, 0, 0, &tmp, 0, 1.0, qp_out->pi+N-1,
+                        0, qp_out->pi+N-1, 0);
+        // State bounds contribution
+        for (int i=0; i<dim->nbx[N]; ++i) {
+            int x_idx = qp_in->idxb[N][i];
+            BLASFEO_DVECEL(qp_out->pi+N-1, x_idx) -= 
+                BLASFEO_DVECEL(qp_out->lam+N, i)
+                - BLASFEO_DVECEL(qp_out->lam+N, dim->nb[N]+dim->ng[N]+i);
+        }
     }
     for (int t=N-1; t>=1; --t) {
         // pi_t = A_t' pi_t + Q_t x_t + S_t' u_t + q_t 
         //        + D_t' (\lam_{g,t}^u - \lam_{g,t}^l) + \lam_{bx,t}^u - \lam_{bx,t}^l
-        blasfeo_dgemv_t(dim->nx[t], dim->nx[t+1], 1.0, qp_in->BAbt+t, dim->nu[t], 0, qp_out->pi+t,
+        blasfeo_dgemv_n(dim->nx[t], dim->nx[t+1], 1.0, qp_in->BAbt+t, dim->nu[t], 0, qp_out->pi+t,
                         0, 1.0, qp_in->rqz+t, dim->nu[t], qp_out->pi+t-1, 0);
         blasfeo_dsymv_l(dim->nx[t], 1.0, qp_in->RSQrq+t, dim->nu[t], dim->nu[t], qp_out->ux+t,
                         dim->nu[t], 1.0, qp_out->pi+t-1, 0, qp_out->pi+t-1, 0);
         blasfeo_dgemv_n(dim->nx[t], dim->nu[t], 1.0, qp_in->RSQrq+t, dim->nu[t], 0, qp_out->ux+t,
                         0, 1.0, qp_out->pi+t-1, 0, qp_out->pi+t-1, 0);
         
+        // Do not add dual contributions if the problem was infeasible
+        if (return_status == DAOCP_INFEASIBLE) continue;
+
         // Compute pi_t += D_t' (\lam_{g,t}^u - \lam_{g,t}^l).
         // Use mem->sol.lam[t] as temporary buffer to compute the difference.
         // This buffer is guaranteed to have at least ng[t] room.
         // We overwrite the dual export in daocp's format, but that's not an issue.
         tmp.pa = mem->sol.lam[t];
-        blasfeo_daxpy(dim->ng[t], -1.0, qp_out->lam+t, 2*dim->nb[t]+dim->ng[t], qp_out->lam+t,
-                      dim->nb[t], &tmp, 0);
-        blasfeo_dgemv_n(dim->nx[t], dim->ng[t], 1.0, qp_in->DCt+t, 0, 0, &tmp, 0, 1.0, qp_out->pi+t-1,
+        blasfeo_daxpy(dim->ng[t], -1.0, qp_out->lam+t, dim->nb[t], qp_out->lam+t,
+                      2*dim->nb[t]+dim->ng[t], &tmp, 0);
+        blasfeo_dgemv_n(dim->nx[t], dim->ng[t], 1.0, qp_in->DCt+t, dim->nu[t], 0, &tmp, 0, 1.0, qp_out->pi+t-1,
                         0, qp_out->pi+t-1, 0);
 
         // State bounds contribution
         for (int i=0; i<dim->nbx[t]; ++i) {
-            int x_idx = qp_in->idxb[dim->nbu[t]+i];
-            BLASFEO_DVECEL(qp_out->pi+t-1, x_idx) += 
-                BLASFEO_DVECEL(qp_out->lam+t, dim->nu[t]+i)
-                - BLAFEO_DVECEL(qp_out->lam+t, dim->nb[t]+dim->ng[t]+dim->nu[t]+i);
+            int x_idx = qp_in->idxb[t][dim->nbu[t]+i] - dim->nu[t];
+            BLASFEO_DVECEL(qp_out->pi+t-1, x_idx) -= 
+                BLASFEO_DVECEL(qp_out->lam+t, dim->nbu[t]+i)
+                - BLASFEO_DVECEL(qp_out->lam+t, dim->nb[t]+dim->ng[t]+dim->nbu[t]+i);
         }
     }
 
     // Initial condition multiplier
     // -\mu = A_t' pi_1 + Q_0 x_0 + S_0' u_0 + q_0 + D_0' (\lam_{g,0}^u - \lam_{g,0}^l)
-    blasfeo_dgemv_t(dim->nx[0], dim->nx[1], -1.0, qp_in->BAbt, dim->nu[0], 0, qp_out->pi,
+    blasfeo_dgemv_n(dim->nx[0], dim->nx[1], -1.0, qp_in->BAbt, dim->nu[0], 0, qp_out->pi,
                     0, -1.0, qp_in->rqz, dim->nu[0], qp_out->lam, 0);
     blasfeo_dsymv_l(dim->nx[0], -1.0, qp_in->RSQrq, dim->nu[0], dim->nu[0], qp_out->ux,
                     dim->nu[0], 1.0, qp_out->lam, 0, qp_out->lam, 0);
     blasfeo_dgemv_n(dim->nx[0], dim->nu[0], -1.0, qp_in->RSQrq, dim->nu[0], 0, qp_out->ux,
                     0, 1.0, qp_out->lam, 0, qp_out->lam, 0);
+
+    // Do not add dual contributions if the problem was infeasible
+    if (return_status == DAOCP_INFEASIBLE) return;
     tmp.pa = mem->sol.lam[0];
-    blasfeo_daxpy(dim->ng[0], -1.0, qp_out->lam, 2*dim->nb[0]+dim->ng[0], qp_out->lam,
-                  dim->nb[0], &tmp, 0);
-    blasfeo_dgemv_n(dim->nx[0], dim->ng[0], -1.0, qp_in->DCt, 0, 0, &tmp, 0, 1.0, qp_out->lam,
+    blasfeo_daxpy(dim->ng[0], -1.0, qp_out->lam, dim->nb[0], qp_out->lam,
+                  2*dim->nb[0]+dim->ng[0], &tmp, 0);
+    blasfeo_dgemv_n(dim->nx[0], dim->ng[0], -1.0, qp_in->DCt, dim->nu[0], 0, &tmp, 0, 1.0, qp_out->lam,
                         0, qp_out->lam, 0);
 }
 
@@ -1237,7 +1246,7 @@ int ocp_qp_daocp(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
 
     acados_daocp_retrieve_slacks(mem, dim, qp_in, qp_out);
     acados_daocp_retrieve_dual_sol(mem, dim, qp_in, qp_out, wrk->status);
-    acados_daocp_retrieve_equality_multipliers(mem, dim, qp_in, qp_out);
+    acados_daocp_retrieve_equality_multipliers(mem, dim, qp_in, qp_out, wrk->status);
     ocp_qp_compute_t(qp_in, qp_out);
 
     if (opts->print_level > 0)
